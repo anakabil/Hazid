@@ -87,50 +87,62 @@ File `vercel.json` sudah menyertakan *rewrite* SPA agar refresh halaman tetap be
 
 ---
 
-## 🗄️ Tentang penyimpanan data
+## 🗄️ Database (Upstash Redis) — sudah terhubung
 
-Versi ini menyimpan data di **`localStorage` browser**. Artinya:
-- Data tersimpan **per-perangkat & per-browser** (tidak otomatis tersinkron antar
-  perangkat atau antar pengguna pada perangkat berbeda).
-- Cocok untuk penggunaan satu tim pada satu perangkat, demo, atau pilot.
+Aplikasi ini **menyimpan data bersama ke database sungguhan** melalui endpoint
+serverless `api/kv.js` yang didukung **Upstash Redis**:
 
-Lapisan penyimpanan diisolasi pada objek `store` di `src/App.jsx`
-(fungsi `get`/`set` async). Seluruh aplikasi memakai `loadJSON`/`saveJSON`,
-jadi mengganti backend **tidak menyentuh** kode lainnya.
+- **Daftar pengguna** (`hazid_users`) dan **seluruh proyek HAZID** (`hazid_projects`)
+  disimpan terpusat di database → **tersinkron antar-perangkat & antar-pengguna**.
+- **Status sesi login** disimpan lokal di tiap perangkat (tidak dikirim ke database),
+  sehingga login di satu perangkat tidak memengaruhi perangkat lain.
+- `localStorage` dipakai sebagai **cache offline**: bila koneksi ke database
+  sementara terputus, aplikasi tetap berjalan dengan data terakhir dan menyinkron
+  kembali pada penyimpanan berikutnya.
 
-### Upgrade ke backend KV (multi-perangkat, seperti AIRA)
+Lapisan penyimpanan tetap terisolasi pada objek `store` di `src/App.jsx`
+(fungsi `get`/`set` async), jadi seluruh kode aplikasi lainnya **tidak berubah**.
 
-Agar data tersinkron antar perangkat/pengguna, ganti isi `store.get`/`store.set`
-dengan panggilan ke backend KV/REST. Pola yang sama seperti AIRA (Upstash Redis):
+### Langkah menghubungkan (cukup sekali, ~5 menit)
 
-```js
-// contoh: src/App.jsx — ganti isi objek `store`
-const BASE = import.meta.env.VITE_API_BASE; // mis. /api atau URL backend
-const store = {
-  async get(key) {
-    try {
-      const r = await fetch(`${BASE}/kv/${encodeURIComponent(key)}`);
-      if (r.ok) { const j = await r.json(); return j.value ?? null; }
-    } catch (e) {}
-    return Object.prototype.hasOwnProperty.call(_mem, key) ? _mem[key] : null;
-  },
-  async set(key, value) {
-    _mem[key] = value;
-    try {
-      await fetch(`${BASE}/kv/${encodeURIComponent(key)}`, {
-        method: "PUT", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ value }),
-      });
-    } catch (e) {}
-    return true;
-  },
-};
-```
+**1. Buat database Upstash Redis (gratis).**
+   - *Termudah:* di dashboard Vercel → tab **Storage** (atau **Integrations →
+     Marketplace → Upstash**) → **Create Database → Redis**. Vercel akan
+     **otomatis mengisi** `KV_REST_API_URL` dan `KV_REST_API_TOKEN` ke project Anda.
+   - *Manual:* daftar di [upstash.com](https://upstash.com) → buat database Redis →
+     buka bagian **REST API** → salin `UPSTASH_REDIS_REST_URL` dan
+     `UPSTASH_REDIS_REST_TOKEN`.
 
-Sediakan endpoint `GET/PUT /api/kv/:key` di backend (mis. Vercel Serverless +
-Upstash Redis). Untuk produksi sungguhan, tambahkan juga **autentikasi server-side**
-(hashing kata sandi, sesi/token) — saat ini autentikasi bersifat sisi-klien untuk
-prototipe, sebagaimana AIRA pada tahap awal.
+**2. Set Environment Variables di Vercel** (Project → **Settings → Environment
+   Variables**) untuk environment *Production*, *Preview*, dan *Development*:
+
+   | Nama | Nilai |
+   |------|-------|
+   | `KV_REST_API_URL` | dari Upstash/Vercel (otomatis bila pakai integrasi) |
+   | `KV_REST_API_TOKEN` | dari Upstash/Vercel (otomatis bila pakai integrasi) |
+   | `APP_API_TOKEN` | string acak rahasia (mis. hasil `openssl rand -hex 24`) |
+   | `VITE_API_TOKEN` | **sama persis** dengan `APP_API_TOKEN` |
+
+**3. Deploy ulang** (Vercel → Deployments → **Redeploy**, atau push commit baru).
+   Saat pertama kali dibuka, akun demo otomatis dibuat **di database**.
+
+> Uji lokal: salin `.env.example` → `.env`, isi nilainya, lalu `npm run dev`.
+> Tanpa variabel database, endpoint `/api/kv` mengembalikan pesan bahwa database
+> belum dikonfigurasi dan aplikasi otomatis memakai cache lokal.
+
+### ⚠️ Catatan keamanan (penting)
+
+Tahap ini menghubungkan **lapisan data** ke database. Autentikasi masih bersifat
+sisi-klien dan **kata sandi tersimpan apa adanya** di database. Untuk deployment
+publik sungguhan, disarankan **hardening lanjutan**:
+
+- **Hash kata sandi** (mis. bcrypt) dan pindahkan verifikasi login ke server.
+- **Sesi/token yang divalidasi server**, bukan sekadar nama pengguna.
+- `VITE_API_TOKEN` ikut ter-bundle di sisi client sehingga **bukan rahasia mutlak** —
+  ia hanya gerbang dasar. Pertimbangkan endpoint per-fungsi (`/api/login`,
+  `/api/projects`, dst.) dengan otorisasi berbasis peran.
+
+Tim Nusa Safety dapat meminta penambahan lapisan keamanan ini kapan saja.
 
 ---
 
@@ -141,11 +153,14 @@ nusa-hazid/
 ├── index.html              # entry HTML
 ├── package.json
 ├── vite.config.js
-├── vercel.json             # konfigurasi deploy + SPA rewrite
+├── vercel.json             # konfigurasi deploy + rewrite SPA (kecuali /api)
+├── .env.example            # contoh variabel lingkungan (database & token)
 ├── tailwind.config.js
 ├── postcss.config.js
 ├── .gitignore
 ├── README.md
+├── api/
+│   └── kv.js               # endpoint serverless ke database (Upstash Redis)
 └── src/
     ├── main.jsx            # bootstrap React
     ├── index.css          # Tailwind + aturan cetak
