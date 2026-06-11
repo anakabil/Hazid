@@ -95,28 +95,71 @@ function priorityOf(rpn) {
   return "Low";
 }
 
-/* ---------- Storage layer (localStorage + in-memory fallback) ----------
-   Same async interface as AIRA's storage wrapper. For a production multi-user /
-   multi-device setup, swap the body of get/set for a KV/REST backend (e.g. the
-   Upstash pattern used by AIRA). See README → "Upgrade ke backend KV". */
+/* ---------- Storage layer (DATABASE-backed) ----------
+   Data bersama (daftar pengguna & proyek) disimpan di DATABASE melalui endpoint
+   serverless /api/kv yang didukung Upstash Redis (lihat folder /api dan README).
+   Status sesi login (hazid_session) bersifat LOKAL per-perangkat dan tidak
+   dikirim ke database. localStorage dipakai sebagai cache offline agar aplikasi
+   tetap berjalan saat API sementara tidak terjangkau.
+   Interface get/set tetap async — bagian aplikasi lain tidak berubah. */
 const _mem = {};
+const API_BASE = "/api/kv";
+const API_TOKEN = (typeof import.meta !== "undefined" && import.meta.env && import.meta.env.VITE_API_TOKEN) || "";
+const REMOTE_KEYS = new Set(["hazid_users", "hazid_projects"]); // disimpan di database
+// catatan: K_SESSION ("hazid_session") sengaja TIDAK remote → tetap lokal di perangkat
+
+function _lsGet(key) {
+  try {
+    if (typeof window !== "undefined" && window.localStorage) {
+      const v = window.localStorage.getItem(key);
+      if (v !== null) return v;
+    }
+  } catch (e) { /* fall through to memory */ }
+  return Object.prototype.hasOwnProperty.call(_mem, key) ? _mem[key] : null;
+}
+function _lsSet(key, value) {
+  _mem[key] = value;
+  try {
+    if (typeof window !== "undefined" && window.localStorage) window.localStorage.setItem(key, value);
+  } catch (e) { /* memory already holds the value */ }
+}
+async function _apiGet(key) {
+  const r = await fetch(API_BASE + "?key=" + encodeURIComponent(key), {
+    headers: API_TOKEN ? { "x-api-token": API_TOKEN } : {},
+  });
+  if (!r.ok) throw new Error("GET " + key + " -> " + r.status);
+  const j = await r.json();
+  return j && j.value != null ? j.value : null;
+}
+async function _apiSet(key, value) {
+  const r = await fetch(API_BASE, {
+    method: "POST",
+    headers: Object.assign({ "Content-Type": "application/json" }, API_TOKEN ? { "x-api-token": API_TOKEN } : {}),
+    body: JSON.stringify({ key: key, value: value }),
+  });
+  if (!r.ok) throw new Error("POST " + key + " -> " + r.status);
+  return true;
+}
 const store = {
   async get(key) {
+    if (!REMOTE_KEYS.has(key)) return _lsGet(key);            // sesi & data lokal
     try {
-      if (typeof window !== "undefined" && window.localStorage) {
-        const v = window.localStorage.getItem(key);
-        if (v !== null) return v;
-      }
-    } catch (e) { /* fall through to memory */ }
-    return Object.prototype.hasOwnProperty.call(_mem, key) ? _mem[key] : null;
+      const v = await _apiGet(key);
+      if (v != null) _lsSet(key, v);                          // segarkan cache offline
+      return v;
+    } catch (e) {
+      if (typeof console !== "undefined") console.warn("[HAZID] DB get gagal, memakai cache lokal:", e.message);
+      return _lsGet(key);                                     // fallback offline
+    }
   },
   async set(key, value) {
-    _mem[key] = value;
+    if (!REMOTE_KEYS.has(key)) { _lsSet(key, value); return true; }
+    _lsSet(key, value);                                       // simpan cache dulu (optimistic)
     try {
-      if (typeof window !== "undefined" && window.localStorage) {
-        window.localStorage.setItem(key, value);
-      }
-    } catch (e) { /* memory already holds the value */ }
+      await _apiSet(key, value);
+    } catch (e) {
+      if (typeof console !== "undefined") console.warn("[HAZID] DB set gagal, tersimpan lokal sementara:", e.message);
+    }
     return true;
   },
 };
