@@ -569,6 +569,10 @@ function LoginScreen(props) {
               <KeyRound size={16} /> Masuk
             </Btn>
           </div>
+
+        </div>
+      </div>
+    </div>
   );
 }
 
