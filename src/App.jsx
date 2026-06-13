@@ -3,12 +3,15 @@ import {
   Shield, LogOut, Plus, Trash2, Pencil, Download, Users, FileText,
   Grid3x3, ListChecks, BarChart3, ChevronLeft, X, Save, AlertTriangle,
   LayoutDashboard, FolderOpen, Wind, Info, ClipboardList, CheckCircle2,
-  Search, Lock, User, KeyRound, Eye, EyeOff, Copy
+  Search, Lock, User, KeyRound, Eye, EyeOff, Copy,
+  Sparkles, Filter, ArrowUpDown, Upload, Camera, FileSpreadsheet, ChevronDown, Loader2
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, CartesianGrid
 } from "recharts";
 import * as XLSX from "xlsx";
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
 
 /* ============================================================================
    NUSA SAFETY — HAZID ASSESSMENT TOOL
@@ -21,17 +24,24 @@ import * as XLSX from "xlsx";
    Reference: CCPS Guidelines for Hazard Evaluation Procedures, 3rd Ed.
 ============================================================================ */
 
-/* ---------- Brand & risk palette ---------- */
+/* ---------- Brand & risk palette (Emerald / hijau eksklusif) ---------- */
 const C = {
-  navy: "#1F3864",
-  deepNavy: "#0D1F3C",
-  red: "#C00000",
-  bg: "#EEF1F6",
+  navy: "#0E7A52",      // primary emerald (kunci dipertahankan agar menyebar otomatis)
+  deepNavy: "#0A4A33",  // deep emerald — sidebar, header gelap
+  red: "#C0392B",       // merah — khusus bahaya/hapus/wajib & risiko kritikal
+  accent: "#17A06B",    // aksen emerald cerah — highlight/aktif
+  mint: "#E6F2EB",      // hijau muda lembut — kartu sorot
+  bg: "#EEF4F0",        // latar aplikasi (sage sangat muda)
   card: "#FFFFFF",
-  border: "#DDE2EB",
-  ink: "#19233A",
-  sub: "#64708A",
-  faint: "#F4F6FA",
+  border: "#D8E3DC",    // garis kehijauan lembut
+  ink: "#16261E",       // tinta gelap bernuansa hijau
+  sub: "#5E7268",       // abu-hijau redup
+  faint: "#F2F8F4",     // hijau samar
+};
+const GRAD = {
+  brand: "linear-gradient(120deg, #0A4A33 0%, #0E7A52 70%, #15976A 100%)",
+  brandSoft: "linear-gradient(135deg, #0B5238 0%, #0E7A52 60%, #18A06E 100%)",
+  app: "linear-gradient(180deg, #EEF4F0 0%, #E7F0EA 100%)",
 };
 const RISK = {
   Acceptable: { bg: "#1A9E5A", fg: "#FFFFFF", label: "Acceptable" },
@@ -51,18 +61,18 @@ const GUIDEWORDS = [
 ];
 
 const LIKELIHOOD = [
-  { v: 1, name: "Rare", id: "Belum pernah terjadi di industri", freq: "<1E-06" },
-  { v: 2, name: "Unlikely", id: "Sangat jarang, bisa terjadi", freq: "1E-06 – 1E-04" },
-  { v: 3, name: "Possible", id: "Pernah terjadi di industri sejenis", freq: "1E-04 – 1E-02" },
-  { v: 4, name: "Likely", id: "Pernah terjadi di fasilitas ini", freq: "1E-02 – 1E-01" },
-  { v: 5, name: "Frequent", id: "Sering terjadi di fasilitas ini", freq: ">0.1" },
+  { v: 1, name: "Rare", id: "Belum pernah terjadi di industri", freq: "< 1 kali per 1.000.000 tahun", freqSci: "< 1×10⁻⁶ /tahun" },
+  { v: 2, name: "Unlikely", id: "Sangat jarang, bisa terjadi", freq: "± 1 kali per 10.000–1.000.000 tahun", freqSci: "1×10⁻⁶ – 1×10⁻⁴ /tahun" },
+  { v: 3, name: "Possible", id: "Pernah terjadi di industri sejenis", freq: "± 1 kali per 100–10.000 tahun", freqSci: "1×10⁻⁴ – 1×10⁻² /tahun" },
+  { v: 4, name: "Likely", id: "Pernah terjadi di fasilitas ini", freq: "± 1 kali per 10–100 tahun", freqSci: "1×10⁻² – 1×10⁻¹ /tahun" },
+  { v: 5, name: "Frequent", id: "Sering terjadi di fasilitas ini", freq: "Lebih dari 1 kali per 10 tahun", freqSci: "> 0,1 /tahun" },
 ];
 const CONSEQUENCE = [
-  { v: 1, name: "Negligible", safety: "P3K / cedera ringan", env: "Tidak terdeteksi", asset: "<$10K" },
-  { v: 2, name: "Minor", safety: "Perawatan medis, tanpa LTI", env: "Minor, di dalam lokasi", asset: "$10K–$100K" },
-  { v: 3, name: "Moderate", safety: "LTI / restricted duty", env: "Signifikan, di lokasi", asset: "$100K–$1M" },
-  { v: 4, name: "Severe", safety: "Fatality / cacat permanen", env: "Mayor, sebagian keluar", asset: "$1M–$10M" },
-  { v: 5, name: "Catastrophic", safety: "Multiple fatality", env: "Masif, lintas batas", asset: ">$10M" },
+  { v: 1, name: "Negligible", safety: "P3K / cedera ringan", env: "Tidak terdeteksi", asset: "< Rp 150 juta" },
+  { v: 2, name: "Minor", safety: "Perawatan medis, tanpa LTI", env: "Minor, di dalam lokasi", asset: "Rp 150 juta – Rp 1,5 miliar" },
+  { v: 3, name: "Moderate", safety: "LTI / restricted duty", env: "Signifikan, di lokasi", asset: "Rp 1,5 – 15 miliar" },
+  { v: 4, name: "Severe", safety: "Fatality / cacat permanen", env: "Mayor, sebagian keluar", asset: "Rp 15 – 150 miliar" },
+  { v: 5, name: "Catastrophic", safety: "Multiple fatality", env: "Masif, lintas batas", asset: "> Rp 150 miliar" },
 ];
 const TOLERANCE = [
   { level: "Acceptable", range: "1–2",  tol: "Tolerable",            action: "Tidak perlu tindakan; dokumentasi" },
@@ -174,6 +184,18 @@ const K_USERS = "hazid_users";
 const K_PROJECTS = "hazid_projects";
 const K_SESSION = "hazid_session";
 
+/* ---------- AI helper — rekomendasi skenario via /api/recommend ---------- */
+async function aiRecommendScenario(payload) {
+  const r = await fetch("/api/recommend", {
+    method: "POST",
+    headers: Object.assign({ "Content-Type": "application/json" }, API_TOKEN ? { "x-api-token": API_TOKEN } : {}),
+    body: JSON.stringify(payload),
+  });
+  const j = await r.json().catch(function () { return {}; });
+  if (!r.ok) throw new Error(j && j.error ? j.error : ("Gagal menghubungi AI (" + r.status + ")"));
+  return j;
+}
+
 function uid(prefix) {
   return prefix + "-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 }
@@ -182,6 +204,39 @@ function fmtDate(iso) {
   if (!iso) return "—";
   try { return new Date(iso).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" }); }
   catch (e) { return "—"; }
+}
+
+/* ---------- Image -> compressed dataURL (for action photos) ---------- */
+function resizeImageToDataURL(file, maxDim, quality) {
+  return new Promise(function (resolve, reject) {
+    if (!file) { reject(new Error("no file")); return; }
+    const reader = new FileReader();
+    reader.onerror = function () { reject(new Error("read error")); };
+    reader.onload = function () {
+      const img = new Image();
+      img.onerror = function () { reject(new Error("image error")); };
+      img.onload = function () {
+        let w = img.naturalWidth || img.width;
+        let h = img.naturalHeight || img.height;
+        const lim = maxDim || 1100;
+        if (w > lim || h > lim) {
+          if (w >= h) { h = Math.round(h * (lim / w)); w = lim; }
+          else { w = Math.round(w * (lim / h)); h = lim; }
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        // isi putih agar PNG transparan tidak jadi hitam saat diekspor ke JPEG
+        ctx.fillStyle = "#FFFFFF";
+        ctx.fillRect(0, 0, w, h);
+        ctx.drawImage(img, 0, 0, w, h);
+        try { resolve(canvas.toDataURL("image/jpeg", quality || 0.82)); }
+        catch (e) { reject(e); }
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
 }
 
 /* ---------- Confirm hook ---------- */
@@ -211,7 +266,7 @@ function useConfirm() {
            style={{ background: C.card, border: "1px solid " + C.border }}>
         <div className="px-5 py-4 flex items-center gap-3" style={{ background: state.danger ? "#FBE9E9" : C.faint }}>
           <div className="flex items-center justify-center rounded-full"
-               style={{ width: 36, height: 36, background: state.danger ? "#F6D2D2" : "#DCE6F5" }}>
+               style={{ width: 36, height: 36, background: state.danger ? "#F6D2D2" : C.mint }}>
             <AlertTriangle size={18} style={{ color: state.danger ? C.red : C.navy }} />
           </div>
           <h3 className="font-semibold text-base" style={{ color: C.ink }}>{state.title}</h3>
@@ -359,20 +414,57 @@ function RiskBadge(props) {
 }
 function Btn(props) {
   const variants = {
-    primary: { background: C.navy, color: "#fff", border: "1px solid " + C.navy },
-    danger:  { background: "#fff", color: C.red, border: "1px solid #E7BcBc" },
-    ghost:   { background: "#fff", color: C.ink, border: "1px solid " + C.border },
-    solidRed:{ background: C.red, color: "#fff", border: "1px solid " + C.red },
+    primary: { background: GRAD.brandSoft, color: "#fff", border: "1px solid " + C.deepNavy, boxShadow: "0 3px 9px rgba(10,74,51,0.24)" },
+    danger:  { background: "#fff", color: C.red, border: "1px solid #E7C3BD" },
+    ghost:   { background: "#fff", color: C.ink, border: "1px solid " + C.border, boxShadow: "0 1px 2px rgba(16,38,30,0.05)" },
+    solidRed:{ background: GRAD.brandSoft, color: "#fff", border: "1px solid " + C.deepNavy, boxShadow: "0 4px 12px rgba(10,74,51,0.28)" },
+    warn:    { background: "#fff", color: "#B45309", border: "1px solid #F0CFA0", boxShadow: "0 1px 2px rgba(16,38,30,0.05)" },
+    ai:      { background: GRAD.brand, color: "#fff", border: "1px solid " + C.deepNavy, boxShadow: "0 5px 14px rgba(10,74,51,0.32)" },
   };
   const v = variants[props.variant || "primary"];
   return (
     <button onClick={props.onClick} disabled={props.disabled} type={props.type || "button"}
-      className="inline-flex items-center gap-2 rounded-lg text-sm font-semibold transition disabled:opacity-50"
+      className="inline-flex items-center gap-2 rounded-lg text-sm font-semibold transition disabled:opacity-50 hover:brightness-105 active:translate-y-px"
       style={Object.assign({ padding: props.sm ? "6px 12px" : "9px 16px", fontSize: props.sm ? 12 : 13 }, v, props.style || {})}>
       {props.children}
     </button>
   );
 }
+
+/* Reusable search + filter + sort bar (Fitur 6) */
+function FilterBar(props) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 mb-3 no-print">
+      <div style={{ position: "relative", flex: "1 1 220px", minWidth: 170 }}>
+        <Search size={14} style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: C.sub }} />
+        <input value={props.search || ""} onChange={function (e) { props.onSearch(e.target.value); }}
+          placeholder={props.placeholder || "Cari…"}
+          style={{ width: "100%", padding: "8px 12px 8px 32px", border: "1px solid " + C.border, borderRadius: 9, fontSize: 12.5, background: "#fff", color: C.ink, outline: "none" }} />
+      </div>
+      {(props.filters || []).map(function (flt, i) {
+        return (
+          <select key={i} value={flt.value} onChange={function (e) { flt.onChange(e.target.value); }}
+            style={{ padding: "8px 10px", border: "1px solid " + C.border, borderRadius: 9, fontSize: 12.5, background: "#fff", color: C.ink }}>
+            {flt.options.map(function (o) { return <option key={o[0]} value={o[0]}>{o[1]}</option>; })}
+          </select>
+        );
+      })}
+      {props.sortOptions ? (
+        <div className="flex items-center gap-1.5" style={{ color: C.sub }}>
+          <ArrowUpDown size={14} />
+          <select value={props.sortValue} onChange={function (e) { props.onSort(e.target.value); }}
+            style={{ padding: "8px 10px", border: "1px solid " + C.border, borderRadius: 9, fontSize: 12.5, background: "#fff", color: C.ink }}>
+            {props.sortOptions.map(function (o) { return <option key={o[0]} value={o[0]}>{o[1]}</option>; })}
+          </select>
+        </div>
+      ) : null}
+      {props.count != null ? (
+        <span style={{ fontSize: 11.5, color: C.sub, marginLeft: "auto", whiteSpace: "nowrap" }}>{props.count} item</span>
+      ) : null}
+    </div>
+  );
+}
+
 function Modal(props) {
   if (!props.open) return null;
   return (
@@ -380,8 +472,8 @@ function Modal(props) {
          style={{ background: "rgba(10,18,38,0.55)" }}>
       <div className="w-full rounded-2xl shadow-2xl my-6"
            style={{ maxWidth: props.wide ? 920 : 640, background: C.card, border: "1px solid " + C.border }}>
-        <div className="px-6 py-4 flex items-center justify-between sticky top-0 rounded-t-2xl"
-             style={{ background: C.deepNavy }}>
+        <div className="px-6 py-4 flex items-center justify-between sticky top-0 rounded-t-2xl z-10"
+             style={{ background: GRAD.brand, boxShadow: "0 2px 10px rgba(10,74,51,0.18)" }}>
           <h3 className="font-semibold text-white text-base flex items-center gap-2">{props.icon}{props.title}</h3>
           <button onClick={props.onClose} className="text-white/80 hover:text-white"><X size={20} /></button>
         </div>
@@ -414,36 +506,32 @@ function LoginScreen(props) {
 
   return (
     <div className="min-h-screen w-full flex items-center justify-center p-4"
-         style={{ background: "linear-gradient(135deg, #0D1F3C 0%, #1F3864 55%, #2A4A82 100%)" }}>
-      <div className="w-full max-w-4xl grid md:grid-cols-2 rounded-3xl overflow-hidden shadow-2xl"
-           style={{ background: C.card }}>
+         style={{ background: "radial-gradient(140% 120% at 100% 0%, #15976A 0%, #0E7A52 38%, #0A4A33 100%)" }}>
+      <div className="w-full max-w-4xl grid md:grid-cols-2 rounded-3xl overflow-hidden"
+           style={{ background: C.card, boxShadow: "0 30px 80px rgba(8,40,28,0.45)" }}>
         {/* Left — brand panel */}
         <div className="p-9 flex flex-col justify-between text-white relative"
-             style={{ background: "radial-gradient(120% 120% at 0% 0%, #24467F 0%, #0D1F3C 70%)" }}>
+             style={{ background: "radial-gradient(120% 120% at 0% 0%, #15976A 0%, #0B5238 55%, #08381F 100%)" }}>
           <div>
-            <div className="flex items-center gap-2 mb-8">
-              <div className="flex items-center justify-center rounded-xl" style={{ width: 40, height: 40, background: C.red }}>
-                <Shield size={22} />
-              </div>
-              <div>
-                <div className="font-bold tracking-tight" style={{ fontSize: 15 }}>NUSA SAFETY</div>
-                <div style={{ fontSize: 10, color: "#A9BBDB" }}>PT. Nusa Rendra Jayatama</div>
-              </div>
-            </div>
-            <h1 className="font-bold leading-tight mb-3" style={{ fontSize: 30, letterSpacing: -0.5 }}>
-              HAZID<br />Assessment Tool
+            <img src="/logo-full-white.png" alt="HAZID App" style={{ height: 46, width: "auto", marginBottom: 26 }} />
+            <h1 className="font-bold leading-tight mb-3" style={{ fontSize: 27, letterSpacing: -0.5 }}>
+              Identifikasi Bahaya &amp;<br />Penilaian Risiko Terstruktur
             </h1>
-            <p style={{ fontSize: 13, color: "#B7C6E2", lineHeight: 1.6, maxWidth: 280 }}>
-              Identifikasi bahaya & penilaian risiko terstruktur berbasis CCPS — Guidelines for Hazard Evaluation Procedures.
+            <p style={{ fontSize: 13, color: "#CDE7DA", lineHeight: 1.6, maxWidth: 290 }}>
+              Berbasis CCPS — Guidelines for Hazard Evaluation Procedures. Kelola node, lembar kerja HAZID, dan tindakan dalam satu alur.
             </p>
           </div>
-          <div className="flex items-center gap-2 mt-8" style={{ fontSize: 11, color: "#8FA4CC" }}>
-            <Wind size={14} /> ISO 45001 · SMK3 · QHSE Consulting
+          <div className="mt-8" style={{ fontSize: 11, color: "#9FCBB6" }}>
+            <div className="flex items-center gap-2"><Shield size={14} /> PT. Nusa Rendra Jayatama — Nusa Safety</div>
+            <div className="mt-1" style={{ color: "#7FB89E" }}>ISO 45001 · SMK3 · QHSE Consulting</div>
           </div>
         </div>
 
         {/* Right — form */}
-        <div className="p-9 flex flex-col justify-center">
+        <div className="p-9 flex flex-col justify-center" style={{ background: "linear-gradient(180deg,#FFFFFF 0%,#F4FAF6 100%)" }}>
+          <div className="flex items-center gap-2 mb-5 md:hidden">
+            <img src="/logo-full-green.png" alt="HAZID App" style={{ height: 30, width: "auto" }} />
+          </div>
           <h2 className="font-bold mb-1" style={{ fontSize: 20, color: C.ink }}>Masuk</h2>
           <p className="mb-6" style={{ fontSize: 13, color: C.sub }}>Silakan masuk untuk melanjutkan penilaian.</p>
 
@@ -477,12 +565,12 @@ function LoginScreen(props) {
               </div>
             ) : null}
 
-            <Btn onClick={submit} style={{ width: "100%", justifyContent: "center", background: C.red, border: "1px solid " + C.red }}>
+            <Btn onClick={submit} style={{ width: "100%", justifyContent: "center" }}>
               <KeyRound size={16} /> Masuk
             </Btn>
           </div>
 
-          <div className="mt-6 rounded-xl p-3" style={{ background: C.faint, border: "1px dashed " + C.border }}>
+          <div className="mt-6 rounded-xl p-3" style={{ background: C.mint, border: "1px dashed " + C.border }}>
             <div className="text-xs font-semibold mb-1" style={{ color: C.sub }}>Akun demo</div>
             <div className="text-xs" style={{ color: C.ink, lineHeight: 1.7 }}>
               <div><b>Admin</b> — username <code>admin</code> · sandi <code>admin123</code></div>
@@ -504,15 +592,10 @@ function Shell(props) {
   return (
     <div className="min-h-screen flex" style={{ background: C.bg }}>
       {/* Sidebar */}
-      <aside className="flex flex-col" style={{ width: 232, background: C.deepNavy, color: "#fff" }}>
-        <div className="px-5 py-5 flex items-center gap-2" style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-          <div className="flex items-center justify-center rounded-lg" style={{ width: 34, height: 34, background: C.red }}>
-            <Shield size={18} />
-          </div>
-          <div>
-            <div className="font-bold tracking-tight" style={{ fontSize: 13 }}>NUSA SAFETY</div>
-            <div style={{ fontSize: 9.5, color: "#8FA4CC" }}>HAZID Tool</div>
-          </div>
+      <aside className="flex flex-col" style={{ width: 234, background: GRAD.brand, color: "#fff", boxShadow: "2px 0 18px rgba(8,40,28,0.20)" }}>
+        <div className="px-5 py-5" style={{ borderBottom: "1px solid rgba(255,255,255,0.12)" }}>
+          <img src="/logo-full-white.png" alt="HAZID App" style={{ height: 30, width: "auto" }} />
+          <div style={{ fontSize: 9.5, color: "#A7D2BF", marginTop: 6, letterSpacing: 0.3 }}>by Nusa Safety</div>
         </div>
 
         <nav className="flex-1 px-3 py-4 space-y-1">
@@ -522,10 +605,10 @@ function Shell(props) {
               <button key={item.id} onClick={function () { props.onNav(item.id); }}
                 className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition"
                 style={{
-                  background: active ? "rgba(255,255,255,0.10)" : "transparent",
-                  color: active ? "#fff" : "#A9BBDB",
+                  background: active ? "rgba(255,255,255,0.16)" : "transparent",
+                  color: active ? "#fff" : "#CDE7DA",
                   fontWeight: active ? 600 : 500,
-                  borderLeft: active ? "3px solid " + C.red : "3px solid transparent",
+                  borderLeft: active ? "3px solid #8FE3C0" : "3px solid transparent",
                 }}>
                 {item.icon}{item.label}
               </button>
@@ -536,19 +619,19 @@ function Shell(props) {
         <div className="px-3 py-4" style={{ borderTop: "1px solid rgba(255,255,255,0.08)" }}>
           <div className="flex items-center gap-2 px-2 mb-3">
             <div className="flex items-center justify-center rounded-full font-bold"
-                 style={{ width: 32, height: 32, background: C.navy, fontSize: 13 }}>
+                 style={{ width: 32, height: 32, background: "rgba(255,255,255,0.20)", fontSize: 13 }}>
               {(user.name || user.username).slice(0, 1).toUpperCase()}
             </div>
             <div style={{ overflow: "hidden" }}>
               <div className="font-semibold truncate" style={{ fontSize: 12.5 }}>{user.name || user.username}</div>
-              <div style={{ fontSize: 10, color: "#8FA4CC", textTransform: "capitalize" }}>
+              <div style={{ fontSize: 10, color: "#A7D2BF", textTransform: "capitalize" }}>
                 {user.role === "admin" ? "Administrator" : "Pengguna"}
               </div>
             </div>
           </div>
           <button onClick={props.onLogout}
             className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium"
-            style={{ background: "rgba(255,255,255,0.06)", color: "#C7D3EA" }}>
+            style={{ background: "rgba(255,255,255,0.10)", color: "#EAF6F0" }}>
             <LogOut size={15} /> Keluar
           </button>
         </div>
@@ -734,15 +817,23 @@ function CriteriaTab() {
   return (
     <div className="space-y-6">
       <Section title="Kriteria Kemungkinan (Likelihood)" icon={<BarChart3 size={16} />} sub="Ref: CCPS Table 2-2">
-        <RefTable head={["Level", "Rating", "Deskripsi (ID)", "Frekuensi / tahun"]}
-                  rows={LIKELIHOOD.map(function (x) { return [String(x.v), x.name, x.id, x.freq]; })}
-                  colorIdx={0} colors={["#D6E4F0", "#D6E4F0", "#FFF2CC", "#FCE4D6", "#F6D2D2"]} />
+        <RefTable head={["Level", "Rating", "Deskripsi (ID)", "Frekuensi kejadian / tahun", "Notasi teknis"]}
+                  rows={LIKELIHOOD.map(function (x) { return [String(x.v), x.name, x.id, x.freq, x.freqSci]; })}
+                  colorIdx={0} colors={["#E2F0E8", "#E9F4DD", "#FFF4D1", "#FCE6D9", "#F7D6D2"]} />
+        <div className="mt-2 rounded-lg px-3 py-2.5 flex gap-2" style={{ background: C.mint, border: "1px solid " + C.border }}>
+          <Info size={15} style={{ color: C.navy, flexShrink: 0, marginTop: 1 }} />
+          <div style={{ fontSize: 11.5, color: C.ink, lineHeight: 1.55 }}>
+            <b>Makna “frekuensi / tahun”:</b> perkiraan seberapa sering kejadian dapat terjadi dalam satu tahun.
+            Contoh: <b>Possible (3)</b> = sekali dalam ±100–10.000 tahun, sedangkan <b>Frequent (5)</b> = lebih dari sekali setiap 10 tahun.
+            Semakin kecil rentang tahunnya, semakin sering kejadian → nilai kemungkinan (L) semakin tinggi.
+          </div>
+        </div>
       </Section>
 
-      <Section title="Kriteria Konsekuensi (Consequence)" icon={<BarChart3 size={16} />} sub="Ref: CCPS Table 2-3">
-        <RefTable head={["Level", "Rating", "Keselamatan", "Lingkungan", "Aset"]}
+      <Section title="Kriteria Konsekuensi (Consequence)" icon={<BarChart3 size={16} />} sub="Ref: CCPS Table 2-3 · nilai aset dalam Rupiah">
+        <RefTable head={["Level", "Rating", "Keselamatan", "Lingkungan", "Aset (Rp)"]}
                   rows={CONSEQUENCE.map(function (x) { return [String(x.v), x.name, x.safety, x.env, x.asset]; })}
-                  colorIdx={0} colors={["#E2EFDA", "#D6E4F0", "#FFF2CC", "#FCE4D6", "#F6D2D2"]} />
+                  colorIdx={0} colors={["#E2F0E8", "#E9F4DD", "#FFF4D1", "#FCE6D9", "#F7D6D2"]} />
       </Section>
 
       <Section title="Matriks Risiko 5×5" icon={<Grid3x3 size={16} />} sub="RPN = Kemungkinan × Konsekuensi">
@@ -752,7 +843,7 @@ function CriteriaTab() {
               <tr>
                 <th style={{ background: "#D9D9D9", color: C.navy, fontSize: 10.5, padding: 8, border: "1px solid #fff" }}>L ↓ / C →</th>
                 {CONSEQUENCE.map(function (c) {
-                  return <th key={c.v} style={{ background: C.red, color: "#fff", fontSize: 11, padding: 8, border: "1px solid #fff" }}>{c.v}. {c.name}</th>;
+                  return <th key={c.v} style={{ background: C.deepNavy, color: "#fff", fontSize: 11, padding: 8, border: "1px solid #fff" }}>{c.v}. {c.name}</th>;
                 })}
               </tr>
             </thead>
@@ -760,7 +851,7 @@ function CriteriaTab() {
               {LIKELIHOOD.slice().reverse().map(function (l) {
                 return (
                   <tr key={l.v}>
-                    <th style={{ background: C.red, color: "#fff", fontSize: 11, padding: 8, border: "1px solid #fff", whiteSpace: "nowrap" }}>{l.v}. {l.name}</th>
+                    <th style={{ background: C.deepNavy, color: "#fff", fontSize: 11, padding: 8, border: "1px solid #fff", whiteSpace: "nowrap" }}>{l.v}. {l.name}</th>
                     {CONSEQUENCE.map(function (c) { return <MatrixCell key={c.v} l={l.v} c={c.v} />; })}
                   </tr>
                 );
@@ -821,6 +912,24 @@ function NodesTab(props) {
   const usage = {};
   scenarios.forEach(function (s) { usage[s.nodeCode] = (usage[s.nodeCode] || 0) + 1; });
 
+  const [search, setSearch] = useState("");
+  const [sortBy, setSortBy] = useState("code");
+  const view = useMemo(function () {
+    let arr = nodes.slice();
+    const q = search.trim().toLowerCase();
+    if (q) arr = arr.filter(function (n) {
+      return ((n.code || "") + " " + (n.descId || "") + " " + (n.descEn || "") + " " + (n.drawing || "") + " " + (n.boundaries || "")).toLowerCase().indexOf(q) >= 0;
+    });
+    arr.sort(function (a, b) {
+      if (sortBy === "code") return (a.code || "").localeCompare(b.code || "", undefined, { numeric: true });
+      if (sortBy === "desc") return (a.descId || a.descEn || "").localeCompare(b.descId || b.descEn || "");
+      if (sortBy === "used_desc") return (usage[b.code] || 0) - (usage[a.code] || 0);
+      if (sortBy === "used_asc") return (usage[a.code] || 0) - (usage[b.code] || 0);
+      return 0;
+    });
+    return arr;
+  }, [nodes, scenarios, search, sortBy]);
+
   function blank() { return { id: "", code: "", descEn: "", descId: "", drawing: "", boundaries: "", included: "", excluded: "" }; }
   function save(n) {
     props.update(function (pr) {
@@ -850,6 +959,10 @@ function NodesTab(props) {
                sub="Batasan & sistem yang dikaji (CCPS §2.3). Kolom “Dipakai” menautkan ke lembar kerja."
                action={<Btn sm onClick={function () { setEditing(blank()); }}><Plus size={14} /> Tambah Node</Btn>}>
         {nodes.length === 0 ? <Empty text="Belum ada node. Definisikan node untuk membatasi lingkup studi." /> : (
+          <>
+          <FilterBar search={search} onSearch={setSearch} placeholder="Cari kode, deskripsi, drawing…" count={view.length}
+            sortValue={sortBy} onSort={setSortBy}
+            sortOptions={[["code", "Kode (urut)"], ["desc", "Deskripsi (A → Z)"], ["used_desc", "Paling banyak dipakai"], ["used_asc", "Paling sedikit dipakai"]]} />
           <div className="overflow-x-auto rounded-lg" style={{ border: "1px solid " + C.border }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
               <thead>
@@ -860,7 +973,7 @@ function NodesTab(props) {
                 </tr>
               </thead>
               <tbody>
-                {nodes.map(function (n, i) {
+                {view.map(function (n, i) {
                   const used = usage[n.code] || 0;
                   return (
                     <tr key={n.id} style={{ background: i % 2 ? C.faint : "#fff" }}>
@@ -872,7 +985,7 @@ function NodesTab(props) {
                       <td style={{ padding: "9px 12px", borderTop: "1px solid " + C.border, color: C.sub, fontSize: 11.5 }}>{n.drawing || "—"}</td>
                       <td style={{ padding: "9px 12px", borderTop: "1px solid " + C.border, color: C.sub, fontSize: 11.5, maxWidth: 280 }}>{n.boundaries || "—"}</td>
                       <td style={{ padding: "9px 12px", borderTop: "1px solid " + C.border, textAlign: "center" }}>
-                        <span className="rounded-full font-bold" style={{ fontSize: 11, padding: "2px 9px", background: used ? "#DCE6F5" : C.faint, color: used ? C.navy : C.sub, fontVariantNumeric: "tabular-nums" }}>{used}</span>
+                        <span className="rounded-full font-bold" style={{ fontSize: 11, padding: "2px 9px", background: used ? C.mint : C.faint, color: used ? C.navy : C.sub, fontVariantNumeric: "tabular-nums" }}>{used}</span>
                       </td>
                       <td style={{ padding: "9px 12px", borderTop: "1px solid " + C.border, whiteSpace: "nowrap" }}>
                         <button onClick={function () { setEditing(n); }} className="p-1.5 rounded-md" style={{ color: C.navy, border: "1px solid " + C.border, marginRight: 4 }}><Pencil size={14} /></button>
@@ -884,6 +997,8 @@ function NodesTab(props) {
               </tbody>
             </table>
           </div>
+          {view.length === 0 ? <Empty text="Tidak ada node yang cocok dengan pencarian." /> : null}
+          </>
         )}
       </Section>
 
@@ -940,6 +1055,35 @@ function WorksheetTab(props) {
   const nodes = project.nodes || [];
   const [editing, setEditing] = useState(null);
   const { confirm, ConfirmDialog } = useConfirm();
+  const [search, setSearch] = useState("");
+  const [fNode, setFNode] = useState("");
+  const [fLevel, setFLevel] = useState("");
+  const [fStatus, setFStatus] = useState("");
+  const [sortBy, setSortBy] = useState("orig");
+
+  const order = useMemo(function () { const m = {}; scenarios.forEach(function (s, i) { m[s.id] = i + 1; }); return m; }, [scenarios]);
+  const view = useMemo(function () {
+    let arr = scenarios.slice();
+    const q = search.trim().toLowerCase();
+    if (q) arr = arr.filter(function (s) {
+      return ((s.nodeCode || "") + " " + (s.guideword || "") + " " + (s.deviation || "") + " " + (s.hazard || "") + " " + (s.causes || "") + " " + (s.consequences || "") + " " + (s.recommendation || "") + " " + (s.party || "")).toLowerCase().indexOf(q) >= 0;
+    });
+    if (fNode) arr = arr.filter(function (s) { return s.nodeCode === fNode; });
+    if (fLevel) arr = arr.filter(function (s) { return levelOf(rpnOf(s.L1, s.C1)) === fLevel; });
+    if (fStatus) arr = arr.filter(function (s) { return s.status === fStatus; });
+    arr.sort(function (a, b) {
+      const a1 = rpnOf(a.L1, a.C1) || 0, b1 = rpnOf(b.L1, b.C1) || 0;
+      const a2 = rpnOf(a.L2, a.C2) || 0, b2 = rpnOf(b.L2, b.C2) || 0;
+      if (sortBy === "orig") return (order[a.id] || 0) - (order[b.id] || 0);
+      if (sortBy === "rpn1_desc") return b1 - a1;
+      if (sortBy === "rpn1_asc") return a1 - b1;
+      if (sortBy === "rpn2_desc") return b2 - a2;
+      if (sortBy === "node") return (a.nodeCode || "").localeCompare(b.nodeCode || "", undefined, { numeric: true });
+      if (sortBy === "status") return (a.status || "").localeCompare(b.status || "");
+      return 0;
+    });
+    return arr;
+  }, [scenarios, search, fNode, fLevel, fStatus, sortBy, order]);
 
   function nodeLabel(code) {
     const n = nodes.find(function (x) { return x.code === code; });
@@ -959,6 +1103,7 @@ function WorksheetTab(props) {
       deviation: "", hazard: "", causes: "", consequences: "", safeguards: "",
       L1: "", C1: "", recommendation: "", party: "", targetDate: "", status: "Open",
       L2: "", C2: "", actionRef: nextRef(),
+      actionResult: "", actionPhoto: "", additionalControls: "",
     };
   }
   function save(s) {
@@ -994,6 +1139,15 @@ function WorksheetTab(props) {
         ) : scenarios.length === 0 ? (
           <Empty text="Belum ada skenario bahaya. Klik “Tambah Skenario” untuk memulai penilaian." />
         ) : (
+          <>
+          <FilterBar search={search} onSearch={setSearch} placeholder="Cari bahaya, penyebab, node, PJ…" count={view.length}
+            filters={[
+              { value: fNode, onChange: setFNode, options: [["", "Semua node"]].concat(nodes.map(function (n) { return [n.code, n.code]; })) },
+              { value: fLevel, onChange: setFLevel, options: [["", "Semua risiko awal"], ["Critical", "Critical"], ["High", "High"], ["Medium", "Medium"], ["Low", "Low"], ["Acceptable", "Acceptable"]] },
+              { value: fStatus, onChange: setFStatus, options: [["", "Semua status"]].concat(STATUS_OPTS.map(function (o) { return [o, o]; })) },
+            ]}
+            sortValue={sortBy} onSort={setSortBy}
+            sortOptions={[["orig", "Urutan asli"], ["rpn1_desc", "Risiko awal tertinggi"], ["rpn1_asc", "Risiko awal terendah"], ["rpn2_desc", "Risiko sisa tertinggi"], ["node", "Node"], ["status", "Status"]]} />
           <div className="overflow-x-auto rounded-lg" style={{ border: "1px solid " + C.border }}>
             <table style={{ borderCollapse: "collapse", fontSize: 11.5, minWidth: 1180 }}>
               <thead>
@@ -1004,13 +1158,13 @@ function WorksheetTab(props) {
                 </tr>
               </thead>
               <tbody>
-                {scenarios.map(function (s, i) {
+                {view.map(function (s, i) {
                   const r1 = rpnOf(s.L1, s.C1), l1 = levelOf(r1);
                   const r2 = rpnOf(s.L2, s.C2), l2 = levelOf(r2);
                   const nodeKnown = nodes.some(function (n) { return n.code === s.nodeCode; });
                   return (
                     <tr key={s.id} style={{ background: i % 2 ? C.faint : "#fff", verticalAlign: "top" }}>
-                      <td style={cellTd()}><span style={{ fontWeight: 700, color: C.navy }}>{i + 1}</span></td>
+                      <td style={cellTd()}><span style={{ fontWeight: 700, color: C.navy }}>{order[s.id]}</span></td>
                       <td style={cellTd()}>
                         <span title={nodeKnown ? nodeLabel(s.nodeCode) : "Node tidak ditemukan — sudah dihapus?"}
                               style={{ fontFamily: "ui-monospace, monospace", fontWeight: 700, color: nodeKnown ? C.navy : C.red }}>
@@ -1040,10 +1194,12 @@ function WorksheetTab(props) {
               </tbody>
             </table>
           </div>
+          {view.length === 0 ? <Empty text="Tidak ada skenario yang cocok dengan pencarian/filter." /> : null}
+          </>
         )}
       </Section>
 
-      <ScenarioModal scenario={editing} nodes={nodes} team={project.info.team || []} onClose={function () { setEditing(null); }} onSave={save} />
+      <ScenarioModal scenario={editing} nodes={nodes} team={project.info.team || []} facility={project.info.facility || project.info.title || ""} onClose={function () { setEditing(null); }} onSave={save} />
     </div>
   );
 }
@@ -1069,9 +1225,42 @@ function StatusChip(props) {
 
 function ScenarioModal(props) {
   const [s, setS] = useState(null);
-  useEffect(function () { setS(props.scenario ? Object.assign({}, props.scenario) : null); }, [props.scenario]);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiMsg, setAiMsg] = useState(null);
+  useEffect(function () { setS(props.scenario ? Object.assign({}, props.scenario) : null); setAiMsg(null); }, [props.scenario]);
   if (!s) return null;
   function f(k, v) { setS(function (x) { return Object.assign({}, x, { [k]: v }); }); }
+  async function runAI() {
+    if (!String(s.guideword || "").trim() && !String(s.deviation || "").trim()) {
+      setAiMsg({ type: "err", text: "Isi Guideword dan/atau Penyimpangan terlebih dahulu." });
+      return;
+    }
+    setAiBusy(true); setAiMsg(null);
+    try {
+      const selNode = (props.nodes || []).find(function (n) { return n.code === s.nodeCode; });
+      const out = await aiRecommendScenario({
+        guideword: s.guideword, deviation: s.deviation,
+        node: selNode ? (selNode.code + " — " + (selNode.descId || selNode.descEn || "")) : s.nodeCode,
+        facility: props.facility || "", hazard: s.hazard || "",
+      });
+      setS(function (x) {
+        const n = Object.assign({}, x);
+        if (!String(n.hazard || "").trim() && out.hazard) n.hazard = out.hazard;
+        if (!String(n.causes || "").trim() && out.causes) n.causes = out.causes;
+        if (!String(n.consequences || "").trim() && out.consequences) n.consequences = out.consequences;
+        if (!String(n.safeguards || "").trim() && out.safeguards) n.safeguards = out.safeguards;
+        if (!String(n.recommendation || "").trim() && out.recommendation) n.recommendation = out.recommendation;
+        if (!n.L1 && out.L) n.L1 = out.L;
+        if (!n.C1 && out.C) n.C1 = out.C;
+        return n;
+      });
+      setAiMsg({ type: "ok", text: "AI melengkapi field yang masih kosong" + (out.note ? " · " + out.note : "") });
+    } catch (e) {
+      setAiMsg({ type: "err", text: e.message });
+    } finally {
+      setAiBusy(false);
+    }
+  }
   const r1 = rpnOf(s.L1, s.C1), l1 = levelOf(r1);
   const r2 = rpnOf(s.L2, s.C2), l2 = levelOf(r2);
 
@@ -1129,7 +1318,7 @@ function ScenarioModal(props) {
         </div>
 
         {selectedNode ? (
-          <div className="rounded-lg px-3 py-2.5" style={{ background: "#EAF0FA", border: "1px solid #CDDBF1" }}>
+          <div className="rounded-lg px-3 py-2.5" style={{ background: C.mint, border: "1px solid " + C.border }}>
             <div className="flex items-center gap-2 mb-0.5">
               <span style={{ fontFamily: "ui-monospace, monospace", fontWeight: 700, color: C.navy, fontSize: 12 }}>{selectedNode.code}</span>
               <span style={{ fontSize: 12.5, fontWeight: 600, color: C.ink }}>{selectedNode.descId || selectedNode.descEn}</span>
@@ -1149,6 +1338,26 @@ function ScenarioModal(props) {
         <Field label="Deskripsi Bahaya / Hazard Description" required>
           <TextArea value={s.hazard} onChange={function (e) { f("hazard", e.target.value); }} />
         </Field>
+
+        {/* Fitur 4 — Rekomendasi otomatis oleh AI */}
+        <div className="rounded-xl p-3.5" style={{ background: C.mint, border: "1px solid " + C.border }}>
+          <div className="flex items-center gap-3 flex-wrap">
+            <Btn variant="ai" onClick={runAI} disabled={aiBusy}>
+              {aiBusy ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
+              {aiBusy ? "AI sedang menyusun…" : "Rekomendasikan oleh AI"}
+            </Btn>
+            <span style={{ fontSize: 11.5, color: C.sub, flex: "1 1 240px", lineHeight: 1.45 }}>
+              Melengkapi otomatis <b>bahaya, penyebab, konsekuensi, pengaman & skor risiko</b> dari Guideword + Penyimpangan yang telah diisi. Hanya mengisi kolom yang masih kosong.
+            </span>
+          </div>
+          {aiMsg ? (
+            <div className="mt-2.5 rounded-lg px-3 py-2 flex items-start gap-2"
+                 style={{ fontSize: 11.5, lineHeight: 1.45, background: aiMsg.type === "ok" ? "#E7F4EC" : "#FBE9E9", color: aiMsg.type === "ok" ? "#1A7E45" : C.red, border: "1px solid " + (aiMsg.type === "ok" ? "#BEE3CC" : "#F1C9C9") }}>
+              {aiMsg.type === "ok" ? <CheckCircle2 size={14} style={{ marginTop: 1, flexShrink: 0 }} /> : <AlertTriangle size={14} style={{ marginTop: 1, flexShrink: 0 }} />}
+              <span>{aiMsg.text}</span>
+            </div>
+          ) : null}
+        </div>
         <div className="grid md:grid-cols-2 gap-4">
           <Field label="Penyebab / Causes">
             <TextArea value={s.causes} onChange={function (e) { f("causes", e.target.value); }} />
@@ -1193,57 +1402,116 @@ function ScenarioModal(props) {
   );
 }
 
-/* ---- Tab 5: Action Register (derived) ---- */
+/* ---- Tab 5: Action Register (komprehensif + sort/filter) ---- */
 function ActionsTab(props) {
   const project = props.project;
-  const scenarios = (project.scenarios || []).filter(function (s) { return (s.recommendation || "").trim().length > 0; });
+  const all = (project.scenarios || []).filter(function (s) { return (s.recommendation || "").trim().length > 0; });
+  const [search, setSearch] = useState("");
+  const [fStatus, setFStatus] = useState("");
+  const [fPrio, setFPrio] = useState("");
+  const [sortBy, setSortBy] = useState("prio_desc");
 
-  function setStatus(id, val) {
+  function patch(id, obj) {
     props.update(function (pr) {
-      pr.scenarios = pr.scenarios.map(function (x) { return x.id === id ? Object.assign({}, x, { status: val }) : x; });
+      pr.scenarios = pr.scenarios.map(function (x) { return x.id === id ? Object.assign({}, x, obj) : x; });
     });
   }
+  async function onPhoto(id, file) {
+    if (!file) return;
+    try { const url = await resizeImageToDataURL(file, 1100, 0.82); patch(id, { actionPhoto: url }); } catch (e) { /* ignore */ }
+  }
+
+  const view = useMemo(function () {
+    let arr = all.slice();
+    const q = search.trim().toLowerCase();
+    if (q) arr = arr.filter(function (s) {
+      return ((s.actionRef || "") + " " + (s.nodeCode || "") + " " + (s.recommendation || "") + " " + (s.party || "") + " " + (s.additionalControls || "") + " " + (s.actionResult || "")).toLowerCase().indexOf(q) >= 0;
+    });
+    if (fStatus) arr = arr.filter(function (s) { return s.status === fStatus; });
+    if (fPrio) arr = arr.filter(function (s) { return priorityOf(rpnOf(s.L1, s.C1)) === fPrio; });
+    arr.sort(function (a, b) {
+      const pa = LEVEL_RANK[priorityOf(rpnOf(a.L1, a.C1))] || 0, pb = LEVEL_RANK[priorityOf(rpnOf(b.L1, b.C1))] || 0;
+      if (sortBy === "prio_desc") return pb - pa;
+      if (sortBy === "prio_asc") return pa - pb;
+      if (sortBy === "ref") return (a.actionRef || "").localeCompare(b.actionRef || "");
+      if (sortBy === "status") return (a.status || "").localeCompare(b.status || "");
+      if (sortBy === "node") return (a.nodeCode || "").localeCompare(b.nodeCode || "");
+      return 0;
+    });
+    return arr;
+  }, [all, search, fStatus, fPrio, sortBy]);
 
   return (
     <Section title="Daftar Tindakan / Action Register" icon={<ClipboardList size={16} />}
-             sub="Otomatis dari skenario yang memiliki rekomendasi. Status dapat diperbarui di sini.">
-      {scenarios.length === 0 ? (
+             sub="Lengkapi hasil tindakan, lampirkan foto bukti, dan tambahkan saran pengendalian. Otomatis dari skenario yang memiliki rekomendasi.">
+      {all.length === 0 ? (
         <Empty text="Belum ada tindakan. Tambahkan rekomendasi pada skenario di lembar kerja HAZID." />
       ) : (
-        <div className="overflow-x-auto rounded-lg" style={{ border: "1px solid " + C.border }}>
-          <table style={{ borderCollapse: "collapse", fontSize: 12, minWidth: 980 }}>
-            <thead>
-              <tr>
-                {["Ref", "Node", "Rekomendasi Tindakan", "Penanggung Jawab", "Target", "Prioritas", "Status"].map(function (h, i) {
-                  return <th key={i} style={{ background: C.red, color: "#fff", textAlign: "left", padding: "8px 11px", fontSize: 11, fontWeight: 600 }}>{h}</th>;
-                })}
-              </tr>
-            </thead>
-            <tbody>
-              {scenarios.map(function (s, i) {
-                const prio = priorityOf(rpnOf(s.L1, s.C1));
-                const pColor = { Critical: RISK.Critical, High: RISK.High, Medium: RISK.Medium, Low: RISK.Low }[prio];
-                return (
-                  <tr key={s.id} style={{ background: i % 2 ? C.faint : "#fff", verticalAlign: "top" }}>
-                    <td style={cellTd()}><span style={{ fontFamily: "ui-monospace, monospace", fontWeight: 700, color: C.navy }}>{s.actionRef}</span></td>
-                    <td style={cellTd()}><span style={{ fontFamily: "ui-monospace, monospace", color: C.navy }}>{s.nodeCode}</span></td>
-                    <td style={cellTd(380)}>{s.recommendation}</td>
-                    <td style={cellTd(140)}>{s.party || "—"}</td>
-                    <td style={cellTd()}>{s.targetDate || "—"}</td>
-                    <td style={cellTd()}>
-                      <span className="rounded font-semibold" style={{ background: pColor.bg, color: pColor.fg, fontSize: 10.5, padding: "2px 8px" }}>{prio}</span>
-                    </td>
-                    <td style={cellTd()}>
-                      <Select value={s.status} onChange={function (e) { setStatus(s.id, e.target.value); }} style={{ padding: "5px 8px", fontSize: 11.5, minWidth: 120 }}>
+        <>
+          <FilterBar search={search} onSearch={setSearch} placeholder="Cari ref, node, rekomendasi, PJ…" count={view.length}
+            filters={[
+              { value: fStatus, onChange: setFStatus, options: [["", "Semua status"]].concat(STATUS_OPTS.map(function (o) { return [o, o]; })) },
+              { value: fPrio, onChange: setFPrio, options: [["", "Semua prioritas"], ["Critical", "Critical"], ["High", "High"], ["Medium", "Medium"], ["Low", "Low"]] },
+            ]}
+            sortValue={sortBy} onSort={setSortBy}
+            sortOptions={[["prio_desc", "Prioritas tertinggi"], ["prio_asc", "Prioritas terendah"], ["ref", "No. Referensi"], ["status", "Status"], ["node", "Node"]]} />
+
+          <div className="space-y-3">
+            {view.map(function (s) {
+              const prio = priorityOf(rpnOf(s.L1, s.C1));
+              const pColor = { Critical: RISK.Critical, High: RISK.High, Medium: RISK.Medium, Low: RISK.Low }[prio] || RISK.Low;
+              return (
+                <div key={s.id} className="rounded-xl" style={{ background: "#fff", border: "1px solid " + C.border, boxShadow: "0 1px 3px rgba(16,38,30,0.06)" }}>
+                  <div className="px-4 py-3 flex items-start gap-2.5 flex-wrap" style={{ borderBottom: "1px solid " + C.faint }}>
+                    <span style={{ fontFamily: "ui-monospace, monospace", fontWeight: 700, color: C.navy, fontSize: 12.5 }}>{s.actionRef || "—"}</span>
+                    <span style={{ fontFamily: "ui-monospace, monospace", color: C.sub, fontSize: 12 }}>{s.nodeCode}</span>
+                    <span className="rounded font-semibold" style={{ background: pColor.bg, color: pColor.fg, fontSize: 10.5, padding: "2px 8px" }}>{prio}</span>
+                    <div className="ml-auto flex items-center gap-2.5 flex-wrap">
+                      <span style={{ fontSize: 11, color: C.sub }}>{s.party || "—"}{s.targetDate ? " · " + s.targetDate : ""}</span>
+                      <Select value={s.status} onChange={function (e) { patch(s.id, { status: e.target.value }); }} style={{ padding: "5px 8px", fontSize: 11.5, minWidth: 120 }}>
                         {STATUS_OPTS.map(function (o) { return <option key={o} value={o}>{o}</option>; })}
                       </Select>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                    </div>
+                  </div>
+                  <div className="px-4 py-3.5">
+                    <div style={{ fontSize: 12.5, color: C.ink, marginBottom: 13, lineHeight: 1.5 }}><b style={{ color: C.navy }}>Rekomendasi:</b> {s.recommendation}</div>
+                    <div className="grid md:grid-cols-2 gap-4">
+                      <div className="space-y-3">
+                        <Field label="Detail Hasil Tindakan">
+                          <TextArea value={s.actionResult || ""} onChange={function (e) { patch(s.id, { actionResult: e.target.value }); }} placeholder="Apa yang telah dikerjakan, hasil, & verifikasinya…" />
+                        </Field>
+                        <Field label="Saran Pengendalian Tambahan">
+                          <TextArea value={s.additionalControls || ""} onChange={function (e) { patch(s.id, { additionalControls: e.target.value }); }} placeholder="Pengendalian lanjutan untuk menyempurnakan tindakan…" />
+                        </Field>
+                      </div>
+                      <Field label="Foto Hasil Tindakan">
+                        {s.actionPhoto ? (
+                          <div className="rounded-lg overflow-hidden relative" style={{ border: "1px solid " + C.border }}>
+                            <img src={s.actionPhoto} alt="Foto hasil tindakan" style={{ width: "100%", maxHeight: 230, objectFit: "cover", display: "block" }} />
+                            <button onClick={function () { patch(s.id, { actionPhoto: "" }); }} className="absolute inline-flex items-center gap-1"
+                              style={{ top: 8, right: 8, background: "rgba(15,30,22,0.66)", color: "#fff", borderRadius: 8, padding: "4px 9px", fontSize: 11 }}>
+                              <Trash2 size={13} /> Hapus
+                            </button>
+                          </div>
+                        ) : (
+                          <label className="flex flex-col items-center justify-center rounded-lg cursor-pointer text-center transition hover:brightness-95"
+                            style={{ border: "1.5px dashed " + C.border, padding: "26px 12px", background: C.faint, color: C.sub, minHeight: 150 }}>
+                            <Camera size={24} style={{ marginBottom: 7 }} />
+                            <span style={{ fontSize: 12.5, fontWeight: 600 }}>Unggah foto bukti</span>
+                            <span style={{ fontSize: 10.5, marginTop: 2 }}>JPG/PNG · otomatis dikompres</span>
+                            <input type="file" accept="image/*" style={{ display: "none" }}
+                              onChange={function (e) { onPhoto(s.id, e.target.files && e.target.files[0]); e.target.value = ""; }} />
+                          </label>
+                        )}
+                      </Field>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+            {view.length === 0 ? <Empty text="Tidak ada tindakan yang cocok dengan pencarian/filter." /> : null}
+          </div>
+        </>
       )}
     </Section>
   );
@@ -1359,8 +1627,8 @@ function SummaryTab(props) {
 
 function StatCard(props) {
   return (
-    <div className="rounded-2xl p-5 flex items-center gap-4" style={{ background: "#fff", border: "1px solid " + C.border }}>
-      <div className="flex items-center justify-center rounded-xl text-white" style={{ width: 44, height: 44, background: props.tint }}>
+    <div className="rounded-2xl p-5 flex items-center gap-4" style={{ background: "#fff", border: "1px solid " + C.border, boxShadow: "0 6px 22px rgba(16,54,40,0.07), 0 1px 3px rgba(16,54,40,0.05)" }}>
+      <div className="flex items-center justify-center rounded-xl text-white" style={{ width: 44, height: 44, background: props.tint, boxShadow: "0 4px 10px rgba(16,54,40,0.18)" }}>
         {props.icon}
       </div>
       <div>
@@ -1374,10 +1642,10 @@ function StatCard(props) {
 /* ---- shared section + empty ---- */
 function Section(props) {
   return (
-    <div className="rounded-2xl overflow-hidden" style={{ background: "#fff", border: "1px solid " + C.border }}>
-      <div className="px-5 py-3.5 flex items-center justify-between gap-3" style={{ borderBottom: "1px solid " + C.faint }}>
+    <div className="rounded-2xl overflow-hidden" style={{ background: "#fff", border: "1px solid " + C.border, boxShadow: "0 6px 22px rgba(16,54,40,0.07), 0 1px 3px rgba(16,54,40,0.05)" }}>
+      <div className="px-5 py-3.5 flex items-center justify-between gap-3" style={{ borderBottom: "1px solid " + C.border, background: "linear-gradient(180deg,#FBFDFC 0%,#F3F8F5 100%)" }}>
         <div className="flex items-center gap-2.5" style={{ color: C.navy }}>
-          {props.icon}
+          <span className="flex items-center justify-center rounded-lg" style={{ width: 30, height: 30, background: C.mint, color: C.navy, flexShrink: 0 }}>{props.icon}</span>
           <div>
             <h3 className="font-bold" style={{ fontSize: 14, color: C.ink }}>{props.title}</h3>
             {props.sub ? <p style={{ fontSize: 11.5, color: C.sub, marginTop: 1 }}>{props.sub}</p> : null}
@@ -1472,29 +1740,27 @@ function ReportTab(props) {
             {sortOptions.map(function (o) { return <option key={o[0]} value={o[0]}>{o[1]}</option>; })}
           </Select>
         </div>
-        <Btn variant="solidRed" onClick={printReport}><Download size={15} /> Cetak / Simpan PDF</Btn>
+        <Btn variant="ghost" onClick={printReport}><FileText size={15} /> Cetak Halaman</Btn>
       </div>
 
       <div className="report-area rounded-2xl overflow-hidden" style={{ background: "#fff", border: "1px solid " + C.border }}>
         {/* Branded header band */}
-        <div className="px-7 py-6 text-white" style={{ background: "linear-gradient(120deg, #0D1F3C 0%, #1F3864 70%)" }}>
+        <div className="px-7 py-6 text-white" style={{ background: GRAD.brand }}>
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div className="flex items-center gap-3">
-              <div className="flex items-center justify-center rounded-xl" style={{ width: 42, height: 42, background: C.red }}>
-                <Shield size={22} />
-              </div>
-              <div>
-                <div className="font-bold tracking-tight" style={{ fontSize: 14 }}>NUSA SAFETY</div>
-                <div style={{ fontSize: 10.5, color: "#A9BBDB" }}>PT. Nusa Rendra Jayatama · QHSE & Fire Protection</div>
+              <img src="/logo-full-white.png" alt="HAZID App" style={{ height: 30, width: "auto" }} />
+              <div style={{ borderLeft: "1px solid rgba(255,255,255,0.28)", paddingLeft: 12 }}>
+                <div className="font-bold tracking-tight" style={{ fontSize: 12.5 }}>NUSA SAFETY</div>
+                <div style={{ fontSize: 10, color: "#B7DCC9" }}>PT. Nusa Rendra Jayatama · QHSE &amp; Fire Protection</div>
               </div>
             </div>
             <div style={{ textAlign: "right" }}>
               <div className="font-bold" style={{ fontSize: 13 }}>LAPORAN STUDI HAZID</div>
-              <div style={{ fontSize: 10.5, color: "#A9BBDB" }}>Hazard Identification Report</div>
+              <div style={{ fontSize: 10.5, color: "#B7DCC9" }}>Hazard Identification Report</div>
             </div>
           </div>
           <h1 className="font-bold mt-5" style={{ fontSize: 22, letterSpacing: -0.3 }}>{info.title || "Tanpa Judul"}</h1>
-          <div className="flex flex-wrap gap-x-6 gap-y-1 mt-2" style={{ fontSize: 11.5, color: "#C7D3EA" }}>
+          <div className="flex flex-wrap gap-x-6 gap-y-1 mt-2" style={{ fontSize: 11.5, color: "#D2EBDF" }}>
             <span><b style={{ color: "#fff" }}>No. Dok:</b> {info.number || "—"}</span>
             <span><b style={{ color: "#fff" }}>Klien:</b> {info.client || "—"}</span>
             <span><b style={{ color: "#fff" }}>Lokasi:</b> {info.location || "—"}</span>
@@ -1700,6 +1966,8 @@ function RiskDistBars(props) {
 function Editor(props) {
   const project = props.project;
   const [tab, setTab] = useState("info");
+  const [exportFmt, setExportFmt] = useState("xlsx");
+  const [exporting, setExporting] = useState(false);
   const { showToast, ToastNode } = useToast();
 
   const tabs = [
@@ -1712,12 +1980,20 @@ function Editor(props) {
     { id: "report", label: "Laporan Akhir", icon: <FileText size={15} /> },
   ];
 
-  function doExport() {
+  async function doExport() {
+    setExporting(true);
     try {
-      exportXlsx(project);
-      showToast("Excel berhasil diunduh");
+      if (exportFmt === "pdf") {
+        await exportPdf(project);
+        showToast("PDF berhasil diunduh");
+      } else {
+        exportXlsx(project);
+        showToast("Excel berhasil diunduh");
+      }
     } catch (e) {
-      showToast("Gagal mengekspor: " + e.message, "err");
+      showToast("Gagal mengekspor: " + (e && e.message ? e.message : e), "err");
+    } finally {
+      setExporting(false);
     }
   }
 
@@ -1739,7 +2015,25 @@ function Editor(props) {
             </p>
           </div>
         </div>
-        <Btn variant="solidRed" onClick={doExport}><Download size={15} /> Ekspor Excel</Btn>
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="relative">
+            <select value={exportFmt} onChange={function (e) { setExportFmt(e.target.value); }}
+              className="appearance-none rounded-lg pl-9 pr-8 py-2.5 cursor-pointer font-semibold"
+              style={{ fontSize: 13, color: C.ink, background: C.faint, border: "1px solid " + C.border, outline: "none" }}>
+              <option value="xlsx">Excel (.xlsx)</option>
+              <option value="pdf">PDF (.pdf)</option>
+            </select>
+            <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", pointerEvents: "none", color: C.navy }}>
+              {exportFmt === "pdf" ? <FileText size={15} /> : <FileSpreadsheet size={15} />}
+            </span>
+            <span style={{ position: "absolute", right: 9, top: "50%", transform: "translateY(-50%)", pointerEvents: "none", color: C.sub }}>
+              <ChevronDown size={14} />
+            </span>
+          </div>
+          <Btn variant="primary" onClick={doExport} disabled={exporting}>
+            {exporting ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />} {exporting ? "Memproses…" : "Ekspor"}
+          </Btn>
+        </div>
       </div>
 
       {/* Tab strip */}
@@ -1752,7 +2046,7 @@ function Editor(props) {
               style={{
                 fontSize: 13, fontWeight: active ? 700 : 500,
                 color: active ? C.navy : C.sub,
-                borderBottom: active ? "2.5px solid " + C.red : "2.5px solid transparent",
+                borderBottom: active ? "2.5px solid " + C.navy : "2.5px solid transparent",
               }}>
               {t.icon}{t.label}
             </button>
@@ -1849,12 +2143,12 @@ function exportXlsx(project) {
   XLSX.utils.book_append_sheet(wb, wsWS, "HAZID Worksheet");
 
   // Action Register
-  const ar = [["DAFTAR TINDAKAN / ACTION REGISTER"], ["Ref", "No HAZID", "Node", "Rekomendasi", "PJ", "Target", "Prioritas", "Status"]];
+  const ar = [["DAFTAR TINDAKAN / ACTION REGISTER"], ["Ref", "No HAZID", "Node", "Rekomendasi", "PJ", "Target", "Prioritas", "Status", "Detail Hasil Tindakan", "Saran Pengendalian Tambahan"]];
   scenarios.filter(function (s) { return (s.recommendation || "").trim(); }).forEach(function (s, i) {
-    ar.push([s.actionRef, i + 1, s.nodeCode, s.recommendation, s.party, s.targetDate, priorityOf(rpnOf(s.L1, s.C1)), s.status]);
+    ar.push([s.actionRef, i + 1, s.nodeCode, s.recommendation, s.party, s.targetDate, priorityOf(rpnOf(s.L1, s.C1)), s.status, s.actionResult || "", s.additionalControls || ""]);
   });
   const wsAR = XLSX.utils.aoa_to_sheet(ar);
-  wsAR["!cols"] = [{ wch: 10 }, { wch: 9 }, { wch: 8 }, { wch: 40 }, { wch: 18 }, { wch: 12 }, { wch: 12 }, { wch: 12 }];
+  wsAR["!cols"] = [{ wch: 10 }, { wch: 9 }, { wch: 8 }, { wch: 40 }, { wch: 18 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 38 }, { wch: 34 }];
   XLSX.utils.book_append_sheet(wb, wsAR, "Action Register");
 
   // Summary
@@ -1890,6 +2184,272 @@ function exportXlsx(project) {
   a.click();
   document.body.removeChild(a);
   setTimeout(function () { URL.revokeObjectURL(url); }, 1500);
+}
+
+/* ============================================================================
+   PDF EXPORT (jsPDF + autotable) — branded final report
+============================================================================ */
+function _imgToDataURL(src) {
+  return fetch(src).then(function (r) { return r.blob(); }).then(function (blob) {
+    return new Promise(function (resolve, reject) {
+      const fr = new FileReader();
+      fr.onload = function () { resolve(fr.result); };
+      fr.onerror = function () { reject(new Error("img read")); };
+      fr.readAsDataURL(blob);
+    });
+  }).catch(function () { return null; });
+}
+
+function _lvlRGB(level) {
+  switch (level) {
+    case "Critical":   return { bg: [192, 57, 43], fg: [255, 255, 255] };
+    case "High":       return { bg: [230, 126, 34], fg: [255, 255, 255] };
+    case "Medium":     return { bg: [241, 196, 15], fg: [40, 40, 40] };
+    case "Low":        return { bg: [124, 179, 66], fg: [255, 255, 255] };
+    case "Acceptable": return { bg: [39, 124, 86], fg: [255, 255, 255] };
+    default:           return { bg: [236, 240, 238], fg: [60, 60, 60] };
+  }
+}
+
+async function exportPdf(project) {
+  const info = project.info || {};
+  const nodes = project.nodes || [];
+  const scenarios = project.scenarios || [];
+
+  const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  const margin = 32;
+
+  const cDeep = [10, 74, 51];
+  const cBrand = [14, 122, 82];
+  const cInk = [22, 38, 30];
+  const cSub = [94, 114, 104];
+  const cMint = [230, 242, 235];
+  const cLine = [216, 227, 220];
+
+  const logo = await _imgToDataURL("/logo-full-white.png");
+
+  function drawHeader() {
+    doc.setFillColor(cDeep[0], cDeep[1], cDeep[2]);
+    doc.rect(0, 0, pageW, 56, "F");
+    doc.setFillColor(cBrand[0], cBrand[1], cBrand[2]);
+    doc.rect(0, 56, pageW, 3, "F");
+    if (logo) {
+      const h = 24, w = h * (2858 / 599);
+      try { doc.addImage(logo, "PNG", margin, 16, w, h); } catch (e) {}
+    } else {
+      doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(15);
+      doc.text("HAZID APP", margin, 35);
+    }
+    doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(12);
+    doc.text("Laporan Akhir Studi HAZID", pageW - margin, 28, { align: "right" });
+    doc.setFont("helvetica", "normal"); doc.setFontSize(8);
+    doc.setTextColor(196, 224, 212);
+    doc.text("PT. Nusa Rendra Jayatama · Nusa Safety", pageW - margin, 42, { align: "right" });
+  }
+
+  const tableOpts = {
+    margin: { top: 74, left: margin, right: margin, bottom: 40 },
+    styles: { font: "helvetica", fontSize: 7.6, cellPadding: 3.2, overflow: "linebreak", lineColor: cLine, lineWidth: 0.4, textColor: cInk, valign: "top" },
+    headStyles: { fillColor: cDeep, textColor: [255, 255, 255], fontStyle: "bold", fontSize: 7.8, halign: "left" },
+    alternateRowStyles: { fillColor: [244, 248, 246] },
+    didDrawPage: function () { drawHeader(); },
+  };
+
+  // ---------- PAGE 1: header + project info + risk summary ----------
+  drawHeader();
+  let y = 78;
+  doc.setTextColor(cInk[0], cInk[1], cInk[2]);
+  doc.setFont("helvetica", "bold"); doc.setFontSize(15);
+  doc.text(info.title || "Studi HAZID", margin, y);
+  y += 16;
+  doc.setFont("helvetica", "normal"); doc.setFontSize(9);
+  doc.setTextColor(cSub[0], cSub[1], cSub[2]);
+  doc.text((info.number ? "No. " + info.number : "") + (info.rev ? "  ·  Rev " + info.rev : "") + (info.studyDate ? "  ·  " + info.studyDate : ""), margin, y);
+  y += 8;
+
+  const infoRows = [
+    ["Fasilitas", info.facility || "—", "Klien", info.client || "—"],
+    ["Lokasi", info.location || "—", "Konsultan", info.consultant || "PT. Nusa Rendra Jayatama (Nusa Safety)"],
+    ["Ketua Studi", info.leader || "—", "Jumlah Node", String(nodes.length)],
+  ];
+  autoTable(doc, Object.assign({}, tableOpts, {
+    startY: y + 6,
+    body: infoRows,
+    theme: "grid",
+    styles: Object.assign({}, tableOpts.styles, { fontSize: 8.4, cellPadding: 4 }),
+    columnStyles: {
+      0: { fontStyle: "bold", fillColor: cMint, cellWidth: 90 },
+      2: { fontStyle: "bold", fillColor: cMint, cellWidth: 90 },
+    },
+    didDrawPage: function () { drawHeader(); },
+  }));
+  y = doc.lastAutoTable.finalY + 18;
+
+  // Risk summary counts
+  const init = { Acceptable: 0, Low: 0, Medium: 0, High: 0, Critical: 0 };
+  const resid = { Acceptable: 0, Low: 0, Medium: 0, High: 0, Critical: 0 };
+  const stc = { "Open": 0, "In Progress": 0, "Closed": 0, "Deferred": 0, "N/A": 0 };
+  let acts = 0;
+  scenarios.forEach(function (s) {
+    const l1 = levelOf(rpnOf(s.L1, s.C1)); if (l1) init[l1] += 1;
+    const l2 = levelOf(rpnOf(s.L2, s.C2)); if (l2) resid[l2] += 1;
+    if ((s.recommendation || "").trim()) { acts += 1; stc[s.status] = (stc[s.status] || 0) + 1; }
+  });
+
+  doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.setTextColor(cInk[0], cInk[1], cInk[2]);
+  doc.text("Ringkasan Risiko", margin, y);
+  y += 8;
+  const order = ["Acceptable", "Low", "Medium", "High", "Critical"];
+  autoTable(doc, Object.assign({}, tableOpts, {
+    startY: y,
+    head: [["Tingkat Risiko"].concat(order)],
+    body: [
+      ["Risiko Awal"].concat(order.map(function (k) { return String(init[k]); })),
+      ["Risiko Sisa (setelah tindakan)"].concat(order.map(function (k) { return String(resid[k]); })),
+    ],
+    theme: "grid",
+    styles: Object.assign({}, tableOpts.styles, { fontSize: 8.4, cellPadding: 4, halign: "center" }),
+    columnStyles: { 0: { fontStyle: "bold", halign: "left", cellWidth: 200 } },
+    didParseCell: function (d) {
+      if (d.section === "head" && d.column.index >= 1) {
+        const lv = _lvlRGB(order[d.column.index - 1]);
+        d.cell.styles.fillColor = lv.bg; d.cell.styles.textColor = lv.fg;
+      }
+    },
+    didDrawPage: function () { drawHeader(); },
+  }));
+  y = doc.lastAutoTable.finalY + 10;
+  doc.setFont("helvetica", "normal"); doc.setFontSize(8.6); doc.setTextColor(cSub[0], cSub[1], cSub[2]);
+  doc.text("Total skenario: " + scenarios.length + "    ·    Total tindakan: " + acts +
+    "    ·    Selesai (Closed): " + (stc["Closed"] || 0) +
+    "    ·    Penyelesaian: " + (acts ? Math.round((stc["Closed"] / acts) * 100) : 0) + "%", margin, y);
+
+  // ---------- HAZID Worksheet ----------
+  if (scenarios.length) {
+    doc.addPage();
+    drawHeader();
+    doc.setFont("helvetica", "bold"); doc.setFontSize(12); doc.setTextColor(cInk[0], cInk[1], cInk[2]);
+    doc.text("Lembar Kerja HAZID", margin, 74);
+    const wsBody = scenarios.map(function (s, i) {
+      const r1 = rpnOf(s.L1, s.C1), r2 = rpnOf(s.L2, s.C2);
+      const lv1 = levelOf(r1), lv2 = levelOf(r2);
+      return [
+        i + 1, s.nodeCode || "", s.guideword || "", s.deviation || "", s.hazard || "",
+        s.causes || "", s.consequences || "", s.safeguards || "",
+        r1 ? r1 + "\n" + (lv1 || "") : "—",
+        s.recommendation || "—",
+        r2 ? r2 + "\n" + (lv2 || "") : "—",
+        s.status || "",
+      ];
+    });
+    autoTable(doc, Object.assign({}, tableOpts, {
+      startY: 82,
+      head: [["No", "Node", "Guideword", "Penyimpangan", "Deskripsi Bahaya", "Penyebab", "Konsekuensi", "Safeguard", "Awal", "Rekomendasi", "Sisa", "Status"]],
+      body: wsBody,
+      columnStyles: {
+        0: { cellWidth: 18, halign: "center" },
+        1: { cellWidth: 34 },
+        2: { cellWidth: 52 },
+        3: { cellWidth: 60 },
+        8: { cellWidth: 38, halign: "center", fontStyle: "bold" },
+        10: { cellWidth: 38, halign: "center", fontStyle: "bold" },
+        11: { cellWidth: 46 },
+      },
+      didParseCell: function (d) {
+        if (d.section === "body" && (d.column.index === 8 || d.column.index === 10)) {
+          const s = scenarios[d.row.index];
+          const lvl = d.column.index === 8 ? levelOf(rpnOf(s.L1, s.C1)) : levelOf(rpnOf(s.L2, s.C2));
+          if (lvl) { const c = _lvlRGB(lvl); d.cell.styles.fillColor = c.bg; d.cell.styles.textColor = c.fg; }
+        }
+      },
+      didDrawPage: function () { drawHeader(); },
+    }));
+  }
+
+  // ---------- Action Register (comprehensive) ----------
+  const actScen = scenarios.filter(function (s) { return (s.recommendation || "").trim(); });
+  if (actScen.length) {
+    doc.addPage();
+    drawHeader();
+    doc.setFont("helvetica", "bold"); doc.setFontSize(12); doc.setTextColor(cInk[0], cInk[1], cInk[2]);
+    doc.text("Daftar Tindakan / Action Register", margin, 74);
+    const arBody = actScen.map(function (s) {
+      return [
+        s.actionRef || "—", s.nodeCode || "", priorityOf(rpnOf(s.L1, s.C1)) || "",
+        s.recommendation || "", s.party || "—", s.targetDate || "—", s.status || "",
+        s.actionResult || "—", s.additionalControls || "—", s.actionPhoto ? "Ada" : "—",
+      ];
+    });
+    autoTable(doc, Object.assign({}, tableOpts, {
+      startY: 82,
+      head: [["Ref", "Node", "Prioritas", "Rekomendasi", "PJ", "Target", "Status", "Detail Hasil Tindakan", "Saran Tambahan", "Foto"]],
+      body: arBody,
+      columnStyles: {
+        0: { cellWidth: 48, fontStyle: "bold" },
+        1: { cellWidth: 32 },
+        2: { cellWidth: 46, halign: "center" },
+        4: { cellWidth: 54 },
+        5: { cellWidth: 48 },
+        6: { cellWidth: 46 },
+        9: { cellWidth: 28, halign: "center" },
+      },
+      didParseCell: function (d) {
+        if (d.section === "body" && d.column.index === 2) {
+          const c = _lvlRGB((d.cell.raw || "").toString());
+          d.cell.styles.fillColor = c.bg; d.cell.styles.textColor = c.fg; d.cell.styles.fontStyle = "bold"; d.cell.styles.halign = "center";
+        }
+      },
+      didDrawPage: function () { drawHeader(); },
+    }));
+  }
+
+  // ---------- Photo appendix ----------
+  const withPhotos = scenarios.filter(function (s) { return s.actionPhoto; });
+  if (withPhotos.length) {
+    doc.addPage();
+    drawHeader();
+    doc.setFont("helvetica", "bold"); doc.setFontSize(12); doc.setTextColor(cInk[0], cInk[1], cInk[2]);
+    doc.text("Lampiran — Foto Hasil Tindakan", margin, 74);
+    let py = 92;
+    const colW = (pageW - margin * 2 - 24) / 2;
+    let col = 0;
+    let rowMaxH = 0;
+    withPhotos.forEach(function (s) {
+      let pw = colW, ph = colW * 0.62;
+      try {
+        const p = doc.getImageProperties(s.actionPhoto);
+        ph = pw * (p.height / p.width);
+        if (ph > 230) { ph = 230; pw = ph * (p.width / p.height); }
+      } catch (e) {}
+      const blockH = ph + 22;
+      if (col === 0 && py + blockH > pageH - 40) { doc.addPage(); drawHeader(); py = 92; }
+      const x = margin + col * (colW + 24);
+      doc.setFont("helvetica", "bold"); doc.setFontSize(8.4); doc.setTextColor(cDeep[0], cDeep[1], cDeep[2]);
+      doc.text((s.actionRef || "Tindakan") + " · Node " + (s.nodeCode || "—"), x, py);
+      try { doc.addImage(s.actionPhoto, "JPEG", x, py + 5, pw, ph); } catch (e) {}
+      doc.setDrawColor(cLine[0], cLine[1], cLine[2]); doc.setLineWidth(0.5);
+      doc.rect(x, py + 5, pw, ph);
+      rowMaxH = Math.max(rowMaxH, blockH);
+      col += 1;
+      if (col >= 2) { col = 0; py += rowMaxH + 12; rowMaxH = 0; }
+    });
+  }
+
+  // ---------- Footer page numbers ----------
+  const total = doc.getNumberOfPages();
+  for (let i = 1; i <= total; i++) {
+    doc.setPage(i);
+    doc.setDrawColor(cLine[0], cLine[1], cLine[2]); doc.setLineWidth(0.5);
+    doc.line(margin, pageH - 26, pageW - margin, pageH - 26);
+    doc.setFont("helvetica", "normal"); doc.setFontSize(7.5); doc.setTextColor(cSub[0], cSub[1], cSub[2]);
+    doc.text("Dihasilkan oleh HAZID App — Nusa Safety", margin, pageH - 14);
+    doc.text("Halaman " + i + " dari " + total, pageW - margin, pageH - 14, { align: "right" });
+  }
+
+  const safe = (info.title || "HAZID").replace(/[^a-z0-9]+/gi, "_").slice(0, 40);
+  doc.save("Laporan_HAZID_" + safe + ".pdf");
 }
 
 /* ============================================================================
@@ -2225,9 +2785,12 @@ export default function App() {
 
   if (!ready) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: C.deepNavy }}>
-        <div className="flex items-center gap-3 text-white">
-          <Shield size={22} /> <span style={{ fontSize: 14 }}>Memuat HAZID Tool…</span>
+      <div className="min-h-screen flex items-center justify-center" style={{ background: GRAD.brand }}>
+        <div className="flex flex-col items-center gap-3 text-white">
+          <img src="/logo-full-white.png" alt="HAZID App" style={{ height: 34, width: "auto", opacity: 0.96 }} />
+          <div className="flex items-center gap-2" style={{ fontSize: 13, color: "#CDE7DA" }}>
+            <Loader2 size={16} className="animate-spin" /> Memuat HAZID App…
+          </div>
         </div>
       </div>
     );

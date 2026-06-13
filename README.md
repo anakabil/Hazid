@@ -19,16 +19,25 @@ async dengan *in-memory fallback*, hook konfirmasi, dan ekspor data.
   1. Informasi Proyek (Cover) + Tim Studi
   2. Kriteria Risiko (matriks 5×5, likelihood, consequence, toleransi)
   3. Node HAZID (dengan kolom "Dipakai" yang menautkan ke lembar kerja)
-  4. Lembar Kerja HAZID (RPN = L × C otomatis, badge risiko berwarna)
-  5. Daftar Tindakan (otomatis dari rekomendasi)
+  4. Lembar Kerja HAZID (RPN = L × C otomatis, badge risiko berwarna) — **+ rekomendasi AI, sort & filter**
+  5. Daftar Tindakan (otomatis dari rekomendasi) — **+ detail hasil, foto bukti, saran pengendalian tambahan, sort & filter**
   6. Ringkasan (grafik distribusi risiko awal vs sisa)
   7. **Laporan Akhir** (komprehensif, bisa diurutkan per tingkat risiko, siap cetak/PDF)
+- **Tema emerald (hijau eksklusif)** dengan logo HAZID App, gradien & elevasi (tidak flat).
+- **Rekomendasikan oleh AI** (Fitur baru): pada lembar kerja, isi Guideword + Penyimpangan
+  lalu klik tombol AI — bahaya, penyebab, konsekuensi, pengaman, rekomendasi, dan skor
+  risiko awal terisi otomatis (via Anthropic API, endpoint `/api/recommend`). Hanya mengisi
+  kolom yang masih kosong sehingga tidak menimpa input manual.
+- **Kriteria Risiko diperjelas**: makna "frekuensi/tahun" (mis. *Possible* = ±1 kali per
+  100–10.000 tahun) dan nilai aset dalam **Rupiah**.
+- **Sort & filter** pada Node HAZID, Lembar Kerja, dan Daftar Tindakan.
 - **Kolom saling terhubung**: field Node, Guideword, dan Penanggung Jawab pada
   lembar kerja memakai pencarian (combobox) yang mereferensikan bagian lain —
   Node merujuk ke daftar Node, Penanggung Jawab merujuk ke Tim Studi. Node yang
   sudah dihapus otomatis ditandai sebagai tidak valid (⚠) agar mudah diperbaiki.
-- **Ekspor Excel** (.xlsx) dengan 6 sheet identik dengan template asli.
-- **Cetak / Simpan PDF** dari tab Laporan Akhir (via dialog cetak browser).
+- **Ekspor Excel (.xlsx)** 6 sheet **atau PDF berkop** (pilih lewat drop-list + tombol Ekspor).
+  PDF mencakup info proyek, ringkasan risiko, lembar kerja, daftar tindakan komprehensif,
+  dan **lampiran foto hasil tindakan**.
 - **Contoh PLTB** siap muat (50 MW Jeneponto) untuk demonstrasi cepat.
 
 ---
@@ -122,6 +131,12 @@ Lapisan penyimpanan tetap terisolasi pada objek `store` di `src/App.jsx`
    | `KV_REST_API_TOKEN` | dari Upstash/Vercel (otomatis bila pakai integrasi) |
    | `APP_API_TOKEN` | string acak rahasia (mis. hasil `openssl rand -hex 24`) |
    | `VITE_API_TOKEN` | **sama persis** dengan `APP_API_TOKEN` |
+   | `ANTHROPIC_API_KEY` | kunci API Anthropic — untuk fitur **Rekomendasikan oleh AI** |
+   | `ANTHROPIC_MODEL` | *(opsional)* model, default `claude-sonnet-4-6` |
+
+> **Catatan AI:** fitur "Rekomendasikan oleh AI" pada lembar kerja hanya aktif setelah
+> `ANTHROPIC_API_KEY` di-set di Vercel. Tanpa kunci tersebut, tombol AI akan menampilkan
+> pesan bahwa kunci belum dikonfigurasi (fitur lain tetap berjalan normal).
 
 **3. Deploy ulang** (Vercel → Deployments → **Redeploy**, atau push commit baru).
    Saat pertama kali dibuka, akun demo otomatis dibuat **di database**.
