@@ -9,7 +9,7 @@ import {
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, CartesianGrid
 } from "recharts";
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 
@@ -1980,7 +1980,7 @@ function Editor(props) {
         await exportPdf(project);
         showToast("PDF berhasil diunduh");
       } else {
-        exportXlsx(project);
+        await exportXlsx(project);
         showToast("Excel berhasil diunduh");
       }
     } catch (e) {
@@ -2063,111 +2063,355 @@ function Editor(props) {
 }
 
 /* ============================================================================
-   EXCEL EXPORT (SheetJS) — mirrors the 6-sheet structure
+   EXCEL EXPORT (ExcelJS) — fully-styled, professional 6-sheet workbook
 ============================================================================ */
-function exportXlsx(project) {
-  const wb = XLSX.utils.book_new();
+async function buildHazidWorkbook(project, logoDataUrl) {
   const info = project.info || {};
   const nodes = project.nodes || [];
   const scenarios = project.scenarios || [];
 
-  // Cover
-  const cover = [
-    ["HAZARD IDENTIFICATION WORKSHEET"],
-    ["Based on CCPS – Guidelines for Hazard Evaluation Procedures, 3rd Edition"],
-    [],
-    ["Judul Proyek", info.title || ""],
-    ["Nomor Dokumen", info.number || ""],
-    ["Fasilitas", info.facility || ""],
-    ["Lokasi", info.location || ""],
-    ["Klien", info.client || ""],
-    ["Konsultan", info.consultant || "PT. Nusa Rendra Jayatama (Nusa Safety)"],
-    ["Tanggal Studi", info.studyDate || ""],
-    ["Ketua Studi", info.leader || ""],
-    ["Revisi", info.rev || "0"],
-    [],
-    ["TIM STUDI"],
-    ["Nama", "Perusahaan", "Jabatan", "Disiplin"],
-  ];
-  (info.team || []).forEach(function (m) { cover.push([m.name, m.company, m.role, m.discipline]); });
-  const wsCover = XLSX.utils.aoa_to_sheet(cover);
-  wsCover["!cols"] = [{ wch: 24 }, { wch: 30 }, { wch: 22 }, { wch: 22 }];
-  XLSX.utils.book_append_sheet(wb, wsCover, "Cover");
+  const C = {
+    deep: "FF0A4A33", brand: "FF0E7A52", accent: "FF17A06B",
+    mint: "FFE6F2EB", faint: "FFF2F8F4", line: "FFCBD9D0",
+    ink: "FF16261E", sub: "FF5E7268", white: "FFFFFFFF",
+  };
+  function lvlStyle(level) {
+    switch (level) {
+      case "Acceptable": return { bg: "FF1A9E5A", fg: "FFFFFFFF" };
+      case "Low": return { bg: "FF8CC152", fg: "FF15280A" };
+      case "Medium": return { bg: "FFE8B500", fg: "FF3A2E00" };
+      case "High": return { bg: "FFEF7B12", fg: "FFFFFFFF" };
+      case "Critical": return { bg: "FFD62121", fg: "FFFFFFFF" };
+      default: return { bg: "FFECF0EE", fg: "FF5E7268" };
+    }
+  }
+  const FONT = "Calibri";
+  const fill = function (argb) { return { type: "pattern", pattern: "solid", fgColor: { argb: argb } }; };
+  const BORDER = {
+    top: { style: "thin", color: { argb: C.line } }, left: { style: "thin", color: { argb: C.line } },
+    bottom: { style: "thin", color: { argb: C.line } }, right: { style: "thin", color: { argb: C.line } },
+  };
 
-  // Risk Matrix
-  const rm = [["KRITERIA KEMUNGKINAN (LIKELIHOOD)"], ["Level", "Rating", "Deskripsi", "Frekuensi/tahun"]];
-  LIKELIHOOD.forEach(function (x) { rm.push([x.v, x.name, x.id, x.freq]); });
-  rm.push([], ["KRITERIA KONSEKUENSI (CONSEQUENCE)"], ["Level", "Rating", "Keselamatan", "Lingkungan", "Aset"]);
-  CONSEQUENCE.forEach(function (x) { rm.push([x.v, x.name, x.safety, x.env, x.asset]); });
-  rm.push([], ["MATRIKS RISIKO 5x5 (RPN = L x C)"], ["L \\ C", "1", "2", "3", "4", "5"]);
-  LIKELIHOOD.slice().reverse().forEach(function (l) {
-    rm.push([l.v].concat(CONSEQUENCE.map(function (c) { return l.v * c.v; })));
-  });
-  rm.push([], ["TINGKAT TOLERANSI RISIKO"], ["Tingkat", "RPN", "Tolerabilitas", "Tindakan Wajib"]);
-  TOLERANCE.forEach(function (t) { rm.push([t.level, t.range, t.tol, t.action]); });
-  const wsRM = XLSX.utils.aoa_to_sheet(rm);
-  wsRM["!cols"] = [{ wch: 14 }, { wch: 14 }, { wch: 28 }, { wch: 28 }, { wch: 16 }, { wch: 10 }];
-  XLSX.utils.book_append_sheet(wb, wsRM, "Risk Matrix");
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "HAZID App — Nusa Safety";
+  wb.created = new Date();
 
-  // Nodes
-  const nd = [["NODE STUDI HAZID"], ["No", "Kode", "Deskripsi (ID)", "Description (EN)", "Drawing/P&ID", "Batasan", "Included", "Excluded"]];
-  nodes.forEach(function (n, i) { nd.push([i + 1, n.code, n.descId, n.descEn, n.drawing, n.boundaries, n.included, n.excluded]); });
-  const wsND = XLSX.utils.aoa_to_sheet(nd);
-  wsND["!cols"] = [{ wch: 5 }, { wch: 10 }, { wch: 28 }, { wch: 28 }, { wch: 18 }, { wch: 30 }, { wch: 30 }, { wch: 24 }];
-  XLSX.utils.book_append_sheet(wb, wsND, "HAZID Nodes");
+  function banner(ws, row, c1, c2, text, bg, size) {
+    ws.mergeCells(row, c1, row, c2);
+    const cell = ws.getCell(row, c1);
+    cell.value = text;
+    cell.fill = fill(bg || C.deep);
+    cell.font = { bold: true, size: size || 12, color: { argb: C.white }, name: FONT };
+    cell.alignment = { vertical: "middle", horizontal: "left", indent: 1 };
+    ws.getRow(row).height = (size && size >= 13) ? 28 : 21;
+  }
+  function headerRow(ws, row, labels, c0) {
+    labels.forEach(function (t, i) {
+      const cell = ws.getCell(row, (c0 || 1) + i);
+      cell.value = t;
+      cell.fill = fill(C.deep);
+      cell.font = { bold: true, size: 10, color: { argb: C.white }, name: FONT };
+      cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
+      cell.border = BORDER;
+    });
+    ws.getRow(row).height = 26;
+  }
+  function dataCell(ws, row, col, value, opts) {
+    opts = opts || {};
+    const cell = ws.getCell(row, col);
+    cell.value = (value === null || value === undefined || value === "") ? (opts.dash ? "—" : "") : value;
+    cell.border = BORDER;
+    cell.font = { size: opts.size || 9.5, name: FONT, color: { argb: opts.fg || C.ink }, bold: !!opts.bold, italic: !!opts.italic };
+    cell.alignment = { vertical: "top", horizontal: opts.align || "left", wrapText: opts.wrap !== false };
+    if (opts.bg) cell.fill = fill(opts.bg);
+    return cell;
+  }
 
-  // HAZID Worksheet
-  const hdr = ["No", "Node", "Guideword", "Penyimpangan", "Deskripsi Bahaya", "Penyebab", "Konsekuensi",
-    "Safeguard Eksisting", "L (Awal)", "C (Awal)", "RPN (Awal)", "Risk (Awal)",
-    "Rekomendasi", "PJ", "Target", "Status", "L (Sisa)", "C (Sisa)", "RPN (Sisa)", "Risk (Sisa)", "Ref"];
-  const ws = [["HAZARD IDENTIFICATION (HAZID) WORKSHEET"], hdr];
-  scenarios.forEach(function (s, i) {
-    const r1 = rpnOf(s.L1, s.C1), r2 = rpnOf(s.L2, s.C2);
-    ws.push([
-      i + 1, s.nodeCode, s.guideword, s.deviation, s.hazard, s.causes, s.consequences,
-      s.safeguards, s.L1 || "", s.C1 || "", r1 || "", levelOf(r1) || "",
-      s.recommendation, s.party, s.targetDate, s.status, s.L2 || "", s.C2 || "", r2 || "", levelOf(r2) || "", s.actionRef,
-    ]);
-  });
-  const wsWS = XLSX.utils.aoa_to_sheet(ws);
-  wsWS["!cols"] = [{ wch: 5 }, { wch: 8 }, { wch: 16 }, { wch: 18 }, { wch: 34 }, { wch: 30 }, { wch: 30 },
-    { wch: 26 }, { wch: 9 }, { wch: 9 }, { wch: 10 }, { wch: 13 }, { wch: 34 }, { wch: 16 }, { wch: 12 },
-    { wch: 12 }, { wch: 9 }, { wch: 9 }, { wch: 10 }, { wch: 13 }, { wch: 10 }];
-  XLSX.utils.book_append_sheet(wb, wsWS, "HAZID Worksheet");
+  // ─────────────────────────────────────────────── COVER ──
+  {
+    const ws = wb.addWorksheet("Cover");
+    [26, 34, 24, 24].forEach(function (w, i) { ws.getColumn(i + 1).width = w; });
+    if (logoDataUrl) {
+      try {
+        const imgId = wb.addImage({ base64: logoDataUrl, extension: "png" });
+        ws.getRow(1).height = 24; ws.getRow(2).height = 24; ws.getRow(3).height = 18;
+        ws.addImage(imgId, { tl: { col: 0.15, row: 0.25 }, ext: { width: 235, height: 49 } });
+      } catch (e) {}
+    }
+    let r = 5;
+    banner(ws, r, 1, 4, "LAPORAN STUDI HAZID — HAZARD IDENTIFICATION REPORT", C.deep, 14); r++;
+    ws.mergeCells(r, 1, r, 4);
+    const sub = ws.getCell(r, 1);
+    sub.value = "Berdasarkan CCPS – Guidelines for Hazard Evaluation Procedures, 3rd Edition";
+    sub.font = { italic: true, size: 9.5, color: { argb: C.sub }, name: FONT };
+    sub.alignment = { vertical: "middle", horizontal: "left", indent: 1 };
+    ws.getRow(r).height = 18; r += 2;
 
-  // Action Register
-  const ar = [["DAFTAR TINDAKAN / ACTION REGISTER"], ["Ref", "No HAZID", "Node", "Rekomendasi", "PJ", "Target", "Prioritas", "Status", "Detail Hasil Tindakan", "Saran Pengendalian Tambahan"]];
-  scenarios.filter(function (s) { return (s.recommendation || "").trim(); }).forEach(function (s, i) {
-    ar.push([s.actionRef, i + 1, s.nodeCode, s.recommendation, s.party, s.targetDate, priorityOf(rpnOf(s.L1, s.C1)), s.status, s.actionResult || "", s.additionalControls || ""]);
-  });
-  const wsAR = XLSX.utils.aoa_to_sheet(ar);
-  wsAR["!cols"] = [{ wch: 10 }, { wch: 9 }, { wch: 8 }, { wch: 40 }, { wch: 18 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 38 }, { wch: 34 }];
-  XLSX.utils.book_append_sheet(wb, wsAR, "Action Register");
+    banner(ws, r, 1, 4, "INFORMASI PROYEK", C.brand, 11); r++;
+    const infoRows = [
+      ["Judul Proyek", info.title || ""], ["Nomor Dokumen", info.number || ""],
+      ["Fasilitas", info.facility || ""], ["Lokasi", info.location || ""],
+      ["Klien", info.client || ""], ["Konsultan", info.consultant || "PT. Nusa Rendra Jayatama (Nusa Safety)"],
+      ["Tanggal Studi", info.studyDate || ""], ["Ketua Studi", info.leader || ""], ["Revisi", info.rev || "0"],
+    ];
+    infoRows.forEach(function (pair) {
+      dataCell(ws, r, 1, pair[0], { bold: true, bg: C.mint, fg: C.deep, wrap: false });
+      ws.mergeCells(r, 2, r, 4);
+      dataCell(ws, r, 2, pair[1], { wrap: false });
+      ws.getRow(r).height = 18; r++;
+    });
+    r++;
 
-  // Summary
-  const init = { Acceptable: 0, Low: 0, Medium: 0, High: 0, Critical: 0 };
-  const resid = { Acceptable: 0, Low: 0, Medium: 0, High: 0, Critical: 0 };
-  const stc = { "Open": 0, "In Progress": 0, "Closed": 0, "Deferred": 0, "N/A": 0 };
-  let acts = 0;
-  scenarios.forEach(function (s) {
-    const l1 = levelOf(rpnOf(s.L1, s.C1)); if (l1) init[l1] += 1;
-    const l2 = levelOf(rpnOf(s.L2, s.C2)); if (l2) resid[l2] += 1;
-    if ((s.recommendation || "").trim()) { acts += 1; stc[s.status] = (stc[s.status] || 0) + 1; }
-  });
-  const sm = [["RINGKASAN STUDI HAZID"], [],
-    ["Hitungan per Tingkat Risiko"], ["Tingkat", "Awal", "Sisa"]];
-  ["Acceptable", "Low", "Medium", "High", "Critical"].forEach(function (lv) { sm.push([lv, init[lv], resid[lv]]); });
-  sm.push([], ["Status Tindakan"], ["Status", "Jumlah"]);
-  STATUS_OPTS.forEach(function (st) { sm.push([st, stc[st] || 0]); });
-  sm.push([], ["Statistik"], ["Total Skenario", scenarios.length], ["Total Tindakan", acts],
-    ["Tindakan Selesai", stc["Closed"]], ["% Penyelesaian", acts ? Math.round((stc["Closed"] / acts) * 100) + "%" : "0%"]);
-  const wsSM = XLSX.utils.aoa_to_sheet(sm);
-  wsSM["!cols"] = [{ wch: 22 }, { wch: 12 }, { wch: 12 }];
-  XLSX.utils.book_append_sheet(wb, wsSM, "Summary");
+    banner(ws, r, 1, 4, "TIM STUDI", C.brand, 11); r++;
+    headerRow(ws, r, ["Nama", "Perusahaan", "Jabatan", "Disiplin"]); r++;
+    const team = info.team || [];
+    if (team.length === 0) {
+      ws.mergeCells(r, 1, r, 4);
+      dataCell(ws, r, 1, "— belum ada anggota tim —", { italic: true, fg: C.sub, align: "center" }); r++;
+    } else {
+      team.forEach(function (m, i) {
+        const bg = i % 2 ? C.faint : C.white;
+        dataCell(ws, r, 1, m.name, { bg: bg, bold: true });
+        dataCell(ws, r, 2, m.company, { bg: bg });
+        dataCell(ws, r, 3, m.role, { bg: bg });
+        dataCell(ws, r, 4, m.discipline, { bg: bg });
+        ws.getRow(r).height = 16; r++;
+      });
+    }
+  }
 
-  // Trigger download via Blob (reliable inside artifact iframe)
-  const out = XLSX.write(wb, { bookType: "xlsx", type: "array" });
-  const blob = new Blob([out], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  // ─────────────────────────────────────── RISK MATRIX ──
+  {
+    const ws = wb.addWorksheet("Kriteria & Matriks");
+    [14, 16, 30, 30, 20, 12].forEach(function (w, i) { ws.getColumn(i + 1).width = w; });
+    let r = 1;
+    banner(ws, r, 1, 6, "KRITERIA RISIKO & MATRIKS 5×5", C.deep, 14); r += 2;
+
+    banner(ws, r, 1, 6, "KRITERIA KEMUNGKINAN (LIKELIHOOD)", C.brand, 11); r++;
+    headerRow(ws, r, ["Level", "Rating", "Deskripsi", "Frekuensi kejadian / tahun", "Notasi teknis"]); r++;
+    LIKELIHOOD.forEach(function (x) {
+      const st = lvlStyle(["Acceptable", "Low", "Medium", "High", "Critical"][x.v - 1]);
+      dataCell(ws, r, 1, x.v, { bg: st.bg, fg: st.fg, bold: true, align: "center" });
+      dataCell(ws, r, 2, x.name, { bold: true });
+      dataCell(ws, r, 3, x.id, {});
+      dataCell(ws, r, 4, x.freq, {});
+      dataCell(ws, r, 5, x.freqSci, { align: "center" });
+      ws.getRow(r).height = 17; r++;
+    });
+    r++;
+
+    banner(ws, r, 1, 6, "KRITERIA KONSEKUENSI (CONSEQUENCE)", C.brand, 11); r++;
+    headerRow(ws, r, ["Level", "Rating", "Keselamatan", "Lingkungan", "Aset (Rp)"]); r++;
+    CONSEQUENCE.forEach(function (x) {
+      const st = lvlStyle(["Acceptable", "Low", "Medium", "High", "Critical"][x.v - 1]);
+      dataCell(ws, r, 1, x.v, { bg: st.bg, fg: st.fg, bold: true, align: "center" });
+      dataCell(ws, r, 2, x.name, { bold: true });
+      dataCell(ws, r, 3, x.safety, {});
+      dataCell(ws, r, 4, x.env, {});
+      dataCell(ws, r, 5, x.asset, {});
+      ws.getRow(r).height = 17; r++;
+    });
+    r++;
+
+    banner(ws, r, 1, 6, "MATRIKS RISIKO 5×5  (RPN = Kemungkinan × Konsekuensi)", C.brand, 11); r++;
+    const corner = ws.getCell(r, 1);
+    corner.value = "L \\ C"; corner.fill = fill(C.deep); corner.font = { bold: true, size: 10, color: { argb: C.white }, name: FONT };
+    corner.alignment = { vertical: "middle", horizontal: "center" }; corner.border = BORDER;
+    CONSEQUENCE.forEach(function (c, i) {
+      const cell = ws.getCell(r, 2 + i);
+      cell.value = c.v + "\n" + c.name;
+      cell.fill = fill(C.deep); cell.font = { bold: true, size: 9, color: { argb: C.white }, name: FONT };
+      cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true }; cell.border = BORDER;
+    });
+    ws.getRow(r).height = 30; r++;
+    LIKELIHOOD.slice().reverse().forEach(function (l) {
+      const lh = ws.getCell(r, 1);
+      lh.value = l.v + " " + l.name; lh.fill = fill(C.deep); lh.font = { bold: true, size: 9, color: { argb: C.white }, name: FONT };
+      lh.alignment = { vertical: "middle", horizontal: "center", wrapText: true }; lh.border = BORDER;
+      CONSEQUENCE.forEach(function (c, i) {
+        const rpn = l.v * c.v; const st = lvlStyle(levelOf(rpn));
+        const cell = ws.getCell(r, 2 + i);
+        cell.value = rpn; cell.fill = fill(st.bg);
+        cell.font = { bold: true, size: 11, color: { argb: st.fg }, name: FONT };
+        cell.alignment = { vertical: "middle", horizontal: "center" }; cell.border = BORDER;
+      });
+      ws.getRow(r).height = 22; r++;
+    });
+    r++;
+
+    banner(ws, r, 1, 6, "TINGKAT TOLERANSI RISIKO", C.brand, 11); r++;
+    headerRow(ws, r, ["Tingkat", "RPN", "Tolerabilitas", "Tindakan Wajib", ""]);
+    ws.mergeCells(r, 4, r, 6); r++;
+    TOLERANCE.forEach(function (t) {
+      const st = lvlStyle(t.level);
+      dataCell(ws, r, 1, t.level, { bg: st.bg, fg: st.fg, bold: true, align: "center" });
+      dataCell(ws, r, 2, t.range, { align: "center" });
+      dataCell(ws, r, 3, t.tol, {});
+      ws.mergeCells(r, 4, r, 6);
+      dataCell(ws, r, 4, t.action, {});
+      ws.getRow(r).height = 17; r++;
+    });
+    ws.views = [{ state: "frozen", ySplit: 1 }];
+  }
+
+  // ─────────────────────────────────────── HAZID NODES ──
+  {
+    const ws = wb.addWorksheet("Node HAZID");
+    [6, 12, 30, 30, 18, 34, 28, 24].forEach(function (w, i) { ws.getColumn(i + 1).width = w; });
+    banner(ws, 1, 1, 8, "NODE STUDI HAZID", C.deep, 14);
+    headerRow(ws, 2, ["No", "Kode", "Deskripsi (ID)", "Description (EN)", "Drawing / P&ID", "Batasan / Boundaries", "Sistem Termasuk", "Dikecualikan"]);
+    let r = 3;
+    if (nodes.length === 0) {
+      ws.mergeCells(r, 1, r, 8); dataCell(ws, r, 1, "— belum ada node —", { italic: true, fg: C.sub, align: "center" });
+    } else {
+      nodes.forEach(function (n, i) {
+        const bg = i % 2 ? C.faint : C.white;
+        dataCell(ws, r, 1, i + 1, { bg: bg, align: "center", bold: true });
+        dataCell(ws, r, 2, n.code, { bg: bg, bold: true, fg: C.brand });
+        dataCell(ws, r, 3, n.descId, { bg: bg });
+        dataCell(ws, r, 4, n.descEn, { bg: bg });
+        dataCell(ws, r, 5, n.drawing, { bg: bg, dash: true });
+        dataCell(ws, r, 6, n.boundaries, { bg: bg });
+        dataCell(ws, r, 7, n.included, { bg: bg });
+        dataCell(ws, r, 8, n.excluded, { bg: bg });
+        ws.getRow(r).height = 30; r++;
+      });
+    }
+    ws.views = [{ state: "frozen", ySplit: 2 }];
+  }
+
+  // ─────────────────────────────────── HAZID WORKSHEET ──
+  {
+    const ws = wb.addWorksheet("Lembar Kerja HAZID");
+    [5, 9, 16, 18, 34, 28, 28, 26, 6, 6, 8, 13, 34, 16, 12, 12, 6, 6, 8, 13, 10]
+      .forEach(function (w, i) { ws.getColumn(i + 1).width = w; });
+    banner(ws, 1, 1, 21, "LEMBAR KERJA HAZID — HAZARD IDENTIFICATION WORKSHEET", C.deep, 14);
+    headerRow(ws, 2, ["No", "Node", "Guideword", "Penyimpangan", "Deskripsi Bahaya", "Penyebab", "Konsekuensi",
+      "Safeguard Eksisting", "L", "C", "RPN", "Risiko Awal", "Rekomendasi", "PJ", "Target", "Status",
+      "L", "C", "RPN", "Risiko Sisa", "Ref"]);
+    let r = 3;
+    if (scenarios.length === 0) {
+      ws.mergeCells(r, 1, r, 21); dataCell(ws, r, 1, "— belum ada skenario —", { italic: true, fg: C.sub, align: "center" });
+    } else {
+      scenarios.forEach(function (s, i) {
+        const r1 = rpnOf(s.L1, s.C1), r2 = rpnOf(s.L2, s.C2);
+        const l1 = levelOf(r1), l2 = levelOf(r2);
+        const bg = i % 2 ? C.faint : C.white;
+        const st1 = lvlStyle(l1), st2 = lvlStyle(l2);
+        dataCell(ws, r, 1, i + 1, { bg: bg, align: "center", bold: true });
+        dataCell(ws, r, 2, s.nodeCode, { bg: bg, bold: true, fg: C.brand });
+        dataCell(ws, r, 3, s.guideword, { bg: bg, bold: true });
+        dataCell(ws, r, 4, s.deviation, { bg: bg });
+        dataCell(ws, r, 5, s.hazard, { bg: bg });
+        dataCell(ws, r, 6, s.causes, { bg: bg });
+        dataCell(ws, r, 7, s.consequences, { bg: bg });
+        dataCell(ws, r, 8, s.safeguards, { bg: bg });
+        dataCell(ws, r, 9, s.L1, { bg: bg, align: "center" });
+        dataCell(ws, r, 10, s.C1, { bg: bg, align: "center" });
+        dataCell(ws, r, 11, r1, { bg: bg, align: "center", bold: true });
+        dataCell(ws, r, 12, l1 || "—", { bg: l1 ? st1.bg : bg, fg: l1 ? st1.fg : C.sub, bold: true, align: "center" });
+        dataCell(ws, r, 13, s.recommendation, { bg: bg });
+        dataCell(ws, r, 14, s.party, { bg: bg, dash: true });
+        dataCell(ws, r, 15, s.targetDate, { bg: bg, dash: true });
+        dataCell(ws, r, 16, s.status, { bg: bg, align: "center" });
+        dataCell(ws, r, 17, s.L2, { bg: bg, align: "center" });
+        dataCell(ws, r, 18, s.C2, { bg: bg, align: "center" });
+        dataCell(ws, r, 19, r2, { bg: bg, align: "center", bold: true });
+        dataCell(ws, r, 20, l2 || "—", { bg: l2 ? st2.bg : bg, fg: l2 ? st2.fg : C.sub, bold: true, align: "center" });
+        dataCell(ws, r, 21, s.actionRef, { bg: bg, align: "center" });
+        ws.getRow(r).height = 42; r++;
+      });
+    }
+    ws.views = [{ state: "frozen", xSplit: 2, ySplit: 2 }];
+  }
+
+  // ─────────────────────────────────── ACTION REGISTER ──
+  {
+    const ws = wb.addWorksheet("Daftar Tindakan");
+    [12, 9, 8, 40, 18, 12, 12, 12, 38, 34].forEach(function (w, i) { ws.getColumn(i + 1).width = w; });
+    banner(ws, 1, 1, 10, "DAFTAR TINDAKAN / ACTION REGISTER", C.deep, 14);
+    headerRow(ws, 2, ["Ref", "No HAZID", "Node", "Rekomendasi", "Penanggung Jawab", "Target", "Prioritas", "Status", "Detail Hasil Tindakan", "Saran Pengendalian Tambahan"]);
+    let r = 3;
+    const acts = scenarios.filter(function (s) { return (s.recommendation || "").trim(); });
+    if (acts.length === 0) {
+      ws.mergeCells(r, 1, r, 10); dataCell(ws, r, 1, "— belum ada tindakan —", { italic: true, fg: C.sub, align: "center" });
+    } else {
+      acts.forEach(function (s, i) {
+        const bg = i % 2 ? C.faint : C.white;
+        const prio = priorityOf(rpnOf(s.L1, s.C1)); const st = lvlStyle(prio);
+        dataCell(ws, r, 1, s.actionRef, { bg: bg, bold: true, fg: C.brand, align: "center" });
+        dataCell(ws, r, 2, i + 1, { bg: bg, align: "center" });
+        dataCell(ws, r, 3, s.nodeCode, { bg: bg, align: "center" });
+        dataCell(ws, r, 4, s.recommendation, { bg: bg });
+        dataCell(ws, r, 5, s.party, { bg: bg, dash: true });
+        dataCell(ws, r, 6, s.targetDate, { bg: bg, dash: true });
+        dataCell(ws, r, 7, prio, { bg: st.bg, fg: st.fg, bold: true, align: "center" });
+        dataCell(ws, r, 8, s.status, { bg: bg, align: "center" });
+        dataCell(ws, r, 9, s.actionResult, { bg: bg, dash: true });
+        dataCell(ws, r, 10, s.additionalControls, { bg: bg, dash: true });
+        ws.getRow(r).height = 34; r++;
+      });
+    }
+    ws.views = [{ state: "frozen", ySplit: 2 }];
+  }
+
+  // ──────────────────────────────────────────── SUMMARY ──
+  {
+    const ws = wb.addWorksheet("Ringkasan");
+    [30, 14, 14].forEach(function (w, i) { ws.getColumn(i + 1).width = w; });
+    const init = { Acceptable: 0, Low: 0, Medium: 0, High: 0, Critical: 0 };
+    const resid = { Acceptable: 0, Low: 0, Medium: 0, High: 0, Critical: 0 };
+    const stc = { "Open": 0, "In Progress": 0, "Closed": 0, "Deferred": 0, "N/A": 0 };
+    let acts = 0;
+    scenarios.forEach(function (s) {
+      const l1 = levelOf(rpnOf(s.L1, s.C1)); if (l1) init[l1] += 1;
+      const l2 = levelOf(rpnOf(s.L2, s.C2)); if (l2) resid[l2] += 1;
+      if ((s.recommendation || "").trim()) { acts += 1; stc[s.status] = (stc[s.status] || 0) + 1; }
+    });
+    let r = 1;
+    banner(ws, r, 1, 3, "RINGKASAN STUDI HAZID", C.deep, 14); r += 2;
+    banner(ws, r, 1, 3, "Hitungan per Tingkat Risiko", C.brand, 11); r++;
+    headerRow(ws, r, ["Tingkat", "Awal", "Sisa"]); r++;
+    ["Acceptable", "Low", "Medium", "High", "Critical"].forEach(function (lv) {
+      const st = lvlStyle(lv);
+      dataCell(ws, r, 1, lv, { bg: st.bg, fg: st.fg, bold: true });
+      dataCell(ws, r, 2, init[lv], { align: "center", bold: true });
+      dataCell(ws, r, 3, resid[lv], { align: "center", bold: true });
+      ws.getRow(r).height = 17; r++;
+    });
+    r++;
+    banner(ws, r, 1, 3, "Status Tindakan", C.brand, 11); r++;
+    headerRow(ws, r, ["Status", "Jumlah", ""]); ws.mergeCells(r, 2, r, 3); r++;
+    STATUS_OPTS.forEach(function (stt) {
+      dataCell(ws, r, 1, stt, { bold: true });
+      ws.mergeCells(r, 2, r, 3);
+      dataCell(ws, r, 2, stc[stt] || 0, { align: "center" });
+      ws.getRow(r).height = 16; r++;
+    });
+    r++;
+    banner(ws, r, 1, 3, "Statistik", C.brand, 11); r++;
+    const stats = [
+      ["Total Skenario", scenarios.length], ["Total Tindakan", acts],
+      ["Tindakan Selesai (Closed)", stc["Closed"]],
+      ["% Penyelesaian", acts ? Math.round((stc["Closed"] / acts) * 100) + "%" : "0%"],
+    ];
+    stats.forEach(function (pr) {
+      dataCell(ws, r, 1, pr[0], { bold: true, bg: C.mint, fg: C.deep });
+      ws.mergeCells(r, 2, r, 3);
+      dataCell(ws, r, 2, pr[1], { align: "center", bold: true });
+      ws.getRow(r).height = 17; r++;
+    });
+  }
+
+  return wb;
+}
+
+async function exportXlsx(project) {
+  const info = project.info || {};
+  const logo = await _imgToDataURL("/logo-full-green.png");
+  const wb = await buildHazidWorkbook(project, logo);
+  const buf = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   const safe = (info.title || "HAZID").replace(/[^a-z0-9]+/gi, "_").slice(0, 40);
