@@ -569,17 +569,6 @@ function LoginScreen(props) {
               <KeyRound size={16} /> Masuk
             </Btn>
           </div>
-
-          <div className="mt-6 rounded-xl p-3" style={{ background: C.mint, border: "1px dashed " + C.border }}>
-            <div className="text-xs font-semibold mb-1" style={{ color: C.sub }}>Akun demo</div>
-            <div className="text-xs" style={{ color: C.ink, lineHeight: 1.7 }}>
-              <div><b>Admin</b> — username <code>admin</code> · sandi <code>admin123</code></div>
-              <div><b>Pengguna</b> — username <code>pengguna</code> · sandi <code>user123</code></div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
   );
 }
 
