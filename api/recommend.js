@@ -1,5 +1,5 @@
 /* ===========================================================================
-   Nusa Safety — HAZID  ·  Endpoint rekomendasi AI  (/api/recommend)
+   Nusa Safety — Hazard Study App  ·  Endpoint rekomendasi AI  (/api/recommend)
    ---------------------------------------------------------------------------
    Melengkapi skenario HAZID secara otomatis berdasarkan guideword & deviation
    menggunakan Anthropic API (Claude). Mengembalikan JSON terstruktur yang

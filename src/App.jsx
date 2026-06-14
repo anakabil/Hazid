@@ -61,13 +61,32 @@ const GUIDEWORDS = [
   "FLOODING", "EARTHQUAKE", "WIND / LIGHTNING", "THIRD PARTY ACTION",
 ];
 
-/* HAZID — kategori bahaya tingkat tinggi (umum & eksternal) */
-const HAZID_GUIDEWORDS = [
+/* HAZID — guideword menyesuaikan basis pengorganisasian studi */
+/* (a) Basis SISTEM/AREA — bahaya teknis & eksternal pada fasilitas */
+const HAZID_GW_SISTEM = [
   "FIRE", "EXPLOSION", "TOXIC RELEASE", "OVERPRESSURE", "LOSS OF CONTAINMENT",
   "CONTAMINATION", "CORROSION / EROSION", "STRUCTURAL FAILURE", "DROPPED OBJECT",
-  "ELECTRICAL HAZARD", "WRONG OPERATION", "HUMAN ERROR", "MAINTENANCE ERROR",
-  "MANAGEMENT OF CHANGE", "FLOODING", "EARTHQUAKE", "WIND / LIGHTNING",
-  "EXTREME WEATHER", "THIRD PARTY ACTION", "SECURITY THREAT",
+  "ELECTRICAL HAZARD", "ROTATING EQUIPMENT", "HIGH TEMPERATURE / CRYOGENIC",
+  "UTILITY FAILURE", "MANAGEMENT OF CHANGE", "FLOODING", "EARTHQUAKE",
+  "WIND / LIGHTNING", "EXTREME WEATHER", "THIRD PARTY ACTION", "SECURITY THREAT",
+];
+/* (b) Basis AKTIVITAS — bahaya pekerjaan/okupasional per tahap kegiatan */
+const HAZID_GW_AKTIVITAS = [
+  "WORKING AT HEIGHT", "LIFTING / CRANE OPERATION", "CONFINED SPACE ENTRY",
+  "HOT WORK", "MANUAL HANDLING", "ELECTRICAL WORK / LOTO", "EXCAVATION / TRENCHING",
+  "MOVING MACHINERY", "SLIP / TRIP / FALL", "HAZARDOUS SUBSTANCE", "NOISE / VIBRATION",
+  "VEHICLE / TRAFFIC", "PRESSURE TESTING", "WORKING OVER WATER", "SIMOPS",
+  "HUMAN ERROR", "PERMIT TO WORK FAILURE", "EMERGENCY / EVACUATION",
+  "ENVIRONMENTAL SPILL", "ERGONOMIC / REPETITIVE",
+];
+/* (c) Basis LINGKUP KAJIAN — campuran luas (fasilitas + aktivitas + eksternal) */
+const HAZID_GW_KAJIAN = [
+  "FIRE", "EXPLOSION", "TOXIC RELEASE", "LOSS OF CONTAINMENT", "STRUCTURAL FAILURE",
+  "ELECTRICAL HAZARD", "ROTATING / MOVING EQUIPMENT", "WORKING AT HEIGHT",
+  "LIFTING OPERATION", "CONFINED SPACE", "HOT WORK", "HAZARDOUS SUBSTANCE",
+  "MANUAL HANDLING", "NATURAL HAZARD (GEMPA/BANJIR)", "WIND / LIGHTNING",
+  "EXTREME WEATHER", "THIRD PARTY ACTION", "SECURITY THREAT", "ENVIRONMENTAL IMPACT",
+  "HUMAN ERROR", "UTILITY / POWER FAILURE", "MANAGEMENT OF CHANGE",
 ];
 
 /* HAZOP — 8 kata panduan deviasi klasik (IEC 61882) + turunan temporal/laju */
@@ -86,10 +105,27 @@ const HAZOP_PARAMETERS = [
 ];
 
 const STUDY_TYPES = ["HAZID", "HAZOP"];
+const HAZID_SCOPES = ["Sistem", "Lingkup Kajian", "Lingkup Aktivitas"];
 function studyTypeOf(project) {
   return (project && project.info && project.info.studyType === "HAZOP") ? "HAZOP" : "HAZID";
 }
-function gwListFor(studyType) { return studyType === "HAZOP" ? HAZOP_GUIDEWORDS : HAZID_GUIDEWORDS; }
+function hazidScopeOf(project) {
+  const sc = project && project.info && project.info.hazidScope;
+  return (sc === "Lingkup Kajian" || sc === "Lingkup Aktivitas") ? sc : "Sistem";
+}
+/* Label unit studi: "Node" untuk HAZOP, atau basis pilihan pengguna untuk HAZID */
+function unitLabel(project) {
+  if (studyTypeOf(project) === "HAZOP") return "Node";
+  return hazidScopeOf(project);
+}
+/* Set guideword sesuai mode + (untuk HAZID) basis pengorganisasian */
+function gwListForProject(project) {
+  if (studyTypeOf(project) === "HAZOP") return HAZOP_GUIDEWORDS;
+  const sc = hazidScopeOf(project);
+  if (sc === "Lingkup Aktivitas") return HAZID_GW_AKTIVITAS;
+  if (sc === "Lingkup Kajian") return HAZID_GW_KAJIAN;
+  return HAZID_GW_SISTEM;
+}
 function studyLabel(studyType) { return studyType === "HAZOP" ? "HAZOP" : "HAZID"; }
 function studyFullLabel(studyType) {
   return studyType === "HAZOP" ? "Hazard & Operability Study" : "Hazard Identification";
@@ -548,7 +584,7 @@ function LoginScreen(props) {
         <div className="p-9 flex flex-col justify-between text-white relative"
              style={{ background: "radial-gradient(120% 120% at 0% 0%, #15976A 0%, #0B5238 55%, #08381F 100%)" }}>
           <div>
-            <img src="/logo-full-white.png" alt="HAZID App" style={{ height: 46, width: "auto", marginBottom: 26 }} />
+            <img src="/logo-full-white.png" alt="Hazard Study App" style={{ height: 46, width: "auto", marginBottom: 26 }} />
             <h1 className="font-bold leading-tight mb-3" style={{ fontSize: 27, letterSpacing: -0.5 }}>
               Identifikasi Bahaya &amp;<br />Penilaian Risiko Terstruktur
             </h1>
@@ -565,7 +601,7 @@ function LoginScreen(props) {
         {/* Right — form */}
         <div className="p-9 flex flex-col justify-center" style={{ background: "linear-gradient(180deg,#FFFFFF 0%,#F4FAF6 100%)" }}>
           <div className="flex items-center gap-2 mb-5 md:hidden">
-            <img src="/logo-full-green.png" alt="HAZID App" style={{ height: 30, width: "auto" }} />
+            <img src="/logo-full-green.png" alt="Hazard Study App" style={{ height: 30, width: "auto" }} />
           </div>
           <h2 className="font-bold mb-1" style={{ fontSize: 20, color: C.ink }}>Masuk</h2>
           <p className="mb-6" style={{ fontSize: 13, color: C.sub }}>Silakan masuk untuk melanjutkan penilaian.</p>
@@ -622,7 +658,7 @@ function Shell(props) {
       {/* Sidebar */}
       <aside className="flex flex-col" style={{ width: 234, background: GRAD.brand, color: "#fff", boxShadow: "2px 0 18px rgba(8,40,28,0.20)" }}>
         <div className="px-5 py-5" style={{ borderBottom: "1px solid rgba(255,255,255,0.12)" }}>
-          <img src="/logo-full-white.png" alt="HAZID App" style={{ height: 30, width: "auto" }} />
+          <img src="/logo-full-white.png" alt="Hazard Study App" style={{ height: 30, width: "auto" }} />
           <div style={{ fontSize: 9.5, color: "#A7D2BF", marginTop: 6, letterSpacing: 0.3 }}>by Nusa Safety</div>
         </div>
 
@@ -790,9 +826,15 @@ function InfoTab(props) {
     ["rev", "Revisi / Rev", false],
   ];
   const studyType = info.studyType === "HAZOP" ? "HAZOP" : "HAZID";
+  const hazidScope = (info.hazidScope === "Lingkup Kajian" || info.hazidScope === "Lingkup Aktivitas") ? info.hazidScope : "Sistem";
   const typeCards = [
     { v: "HAZID", t: "HAZID", d: "Hazard Identification — identifikasi bahaya tingkat tinggi & luas (termasuk bahaya eksternal). Cocok untuk tahap awal/konsep." },
     { v: "HAZOP", t: "HAZOP", d: "Hazard & Operability — kajian rinci penyimpangan parameter proses (aliran, tekanan, suhu…) per node P&ID. Untuk desain matang/operasi." },
+  ];
+  const scopeCards = [
+    { v: "Sistem", d: "Studi diiris per area/sistem fisik (mis. Area Turbin, Gardu Induk). Guideword: bahaya teknis & eksternal (FIRE, EXPLOSION, STRUCTURAL FAILURE, EARTHQUAKE…)." },
+    { v: "Lingkup Kajian", d: "Pengirisan umum/fleksibel. Guideword: campuran luas fasilitas + aktivitas + eksternal. Pilihan paling netral." },
+    { v: "Lingkup Aktivitas", d: "Studi diiris per tahap kegiatan (konstruksi, commissioning, perawatan). Guideword: bahaya pekerjaan (WORKING AT HEIGHT, CONFINED SPACE, HOT WORK…)." },
   ];
   return (
     <div className="space-y-6">
@@ -821,6 +863,38 @@ function InfoTab(props) {
             );
           })}
         </div>
+
+        {studyType === "HAZID" ? (
+          <div className="mt-4 pt-4" style={{ borderTop: "1px solid " + C.border }}>
+            <div className="font-semibold mb-1" style={{ fontSize: 12.5, color: C.ink }}>Basis Pengorganisasian / Unit Studi HAZID</div>
+            <div className="mb-3" style={{ fontSize: 11.5, color: C.sub, lineHeight: 1.5 }}>
+              Menggantikan istilah “Node” (yang khas HAZOP) dan menyesuaikan daftar guideword secara otomatis.
+            </div>
+            <div className="grid sm:grid-cols-3 gap-3">
+              {scopeCards.map(function (c) {
+                const active = hazidScope === c.v;
+                return (
+                  <button key={c.v} onClick={function () { set("hazidScope", c.v); }}
+                          className="text-left rounded-xl p-3.5 transition"
+                          style={{
+                            border: "1.5px solid " + (active ? C.navy : C.border),
+                            background: active ? C.mint : "#fff",
+                            boxShadow: active ? "0 2px 10px rgba(14,90,67,0.12)" : "none",
+                            cursor: "pointer",
+                          }}>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="inline-flex items-center justify-center rounded-md" style={{ width: 20, height: 20, background: active ? C.navy : C.faint, color: active ? "#fff" : C.sub }}>
+                        {active ? <CheckCircle2 size={13} /> : <span style={{ width: 8, height: 8, borderRadius: 8, border: "2px solid " + C.sub, display: "block" }} />}
+                      </span>
+                      <span className="font-bold" style={{ fontSize: 13, color: active ? C.deepNavy : C.ink }}>{c.v}</span>
+                    </div>
+                    <div style={{ fontSize: 10.8, color: C.sub, lineHeight: 1.45 }}>{c.d}</div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
       </Section>
 
       <Section title="Informasi Proyek" icon={<Info size={16} />}>
@@ -966,6 +1040,7 @@ function RefTable(props) {
 function NodesTab(props) {
   const nodes = props.project.nodes || [];
   const scenarios = props.project.scenarios || [];
+  const uLabel = unitLabel(props.project);
   const [editing, setEditing] = useState(null); // node object or {new:true}
   const { confirm, ConfirmDialog } = useConfirm();
 
@@ -1007,7 +1082,7 @@ function NodesTab(props) {
     const msg = used > 0
       ? "Node “" + node.code + "” dipakai oleh " + used + " skenario. Skenario tersebut tidak ikut terhapus, namun kolom Node-nya akan ditandai tidak valid sampai diperbaiki. Lanjut hapus?"
       : "Hapus node “" + node.code + "”? Tindakan ini permanen.";
-    const ok = await confirm({ title: "Hapus Node", message: msg });
+    const ok = await confirm({ title: "Hapus " + uLabel, message: msg });
     if (!ok) return;
     props.update(function (pr) { pr.nodes = pr.nodes.filter(function (x) { return x.id !== node.id; }); });
   }
@@ -1015,10 +1090,10 @@ function NodesTab(props) {
   return (
     <div>
       {ConfirmDialog}
-      <Section title={"Node Studi " + studyLabel(studyTypeOf(props.project))} icon={<Grid3x3 size={16} />}
-               sub="Batasan & sistem yang dikaji (CCPS §2.3). Kolom “Dipakai” menautkan ke lembar kerja."
-               action={<Btn sm onClick={function () { setEditing(blank()); }}><Plus size={14} /> Tambah Node</Btn>}>
-        {nodes.length === 0 ? <Empty text="Belum ada node. Definisikan node untuk membatasi lingkup studi." /> : (
+      <Section title={"Daftar " + uLabel + " — " + studyLabel(studyTypeOf(props.project))} icon={<Grid3x3 size={16} />}
+               sub="Batasan & lingkup yang dikaji (CCPS §2.3). Kolom “Dipakai” menautkan ke lembar kerja."
+               action={<Btn sm onClick={function () { setEditing(blank()); }}><Plus size={14} /> Tambah {uLabel}</Btn>}>
+        {nodes.length === 0 ? <Empty text={"Belum ada " + uLabel + ". Definisikan " + uLabel + " untuk membatasi lingkup studi."} /> : (
           <>
           <FilterBar search={search} onSearch={setSearch} placeholder="Cari kode, deskripsi, drawing…" count={view.length}
             sortValue={sortBy} onSort={setSortBy}
@@ -1062,28 +1137,29 @@ function NodesTab(props) {
         )}
       </Section>
 
-      <NodeModal node={editing} onClose={function () { setEditing(null); }} onSave={save} />
+      <NodeModal node={editing} unitLabel={uLabel} onClose={function () { setEditing(null); }} onSave={save} />
     </div>
   );
 }
 
 function NodeModal(props) {
   const [n, setN] = useState(props.node || null);
+  const uLabel = props.unitLabel || "Node";
   useEffect(function () { setN(props.node ? Object.assign({}, props.node) : null); }, [props.node]);
   if (!n) return null;
   function f(k, v) { setN(function (s) { return Object.assign({}, s, { [k]: v }); }); }
   return (
     <Modal open={true} onClose={props.onClose} wide
-           icon={<Grid3x3 size={18} />} title={n.id ? "Edit Node" : "Tambah Node"}
+           icon={<Grid3x3 size={18} />} title={(n.id ? "Edit " : "Tambah ") + uLabel}
            footer={<>
              <Btn variant="ghost" onClick={props.onClose}>Batal</Btn>
              <Btn onClick={function () { props.onSave(n); }}><Save size={15} /> Simpan</Btn>
            </>}>
       <div className="grid md:grid-cols-2 gap-4">
-        <Field label="Kode Node (cth. N-01)" required>
+        <Field label={"Kode " + uLabel + " (cth. N-01)"} required>
           <TextInput value={n.code} onChange={function (e) { f("code", e.target.value); }} placeholder="N-01" />
         </Field>
-        <Field label="Drawing / P&ID Ref">
+        <Field label="Drawing / Referensi">
           <TextInput value={n.drawing} onChange={function (e) { f("drawing", e.target.value); }} />
         </Field>
         <Field label="Deskripsi (ID)">
@@ -1115,6 +1191,8 @@ function WorksheetTab(props) {
   const nodes = project.nodes || [];
   const studyType = studyTypeOf(project);
   const isHazop = studyType === "HAZOP";
+  const gwList = gwListForProject(project);
+  const uLabel = unitLabel(project);
   const [editing, setEditing] = useState(null);
   const { confirm, ConfirmDialog } = useConfirm();
   const [search, setSearch] = useState("");
@@ -1161,7 +1239,7 @@ function WorksheetTab(props) {
   }
   function blank() {
     return {
-      id: "", nodeCode: nodes[0] ? nodes[0].code : "", parameter: "", guideword: gwListFor(studyType)[0],
+      id: "", nodeCode: nodes[0] ? nodes[0].code : "", parameter: "", guideword: gwList[0],
       deviation: "", hazard: "", causes: "", consequences: "", safeguards: "",
       L1: "", C1: "", recommendation: "", party: "", targetDate: "", status: "Open",
       L2: "", C2: "", actionRef: nextRef(),
@@ -1197,7 +1275,7 @@ function WorksheetTab(props) {
                  }}><Plus size={14} /> Tambah Skenario</Btn>
                }>
         {nodes.length === 0 ? (
-          <Empty text="Definisikan minimal satu Node terlebih dahulu pada tab “Node HAZID” sebelum menambah skenario." />
+          <Empty text={"Definisikan minimal satu " + uLabel + " terlebih dahulu pada tab “" + uLabel + "” sebelum menambah skenario."} />
         ) : scenarios.length === 0 ? (
           <Empty text="Belum ada skenario bahaya. Klik “Tambah Skenario” untuk memulai penilaian." />
         ) : (
@@ -1214,7 +1292,7 @@ function WorksheetTab(props) {
             <table style={{ borderCollapse: "collapse", fontSize: 11.5, minWidth: 1180 }}>
               <thead>
                 <tr>
-                  {["No", "Node"].concat(isHazop ? ["Parameter"] : []).concat(["Guideword", "Deskripsi Bahaya", "Penyebab", "Konsekuensi", "Safeguard", "Awal", "Rekomendasi", "PJ", "Status", "Sisa", "Ref", ""]).map(function (h, i) {
+                  {["No", uLabel].concat(isHazop ? ["Parameter"] : []).concat(["Guideword", "Deskripsi Bahaya", "Penyebab", "Konsekuensi", "Safeguard", "Awal", "Rekomendasi", "PJ", "Status", "Sisa", "Ref", ""]).map(function (h, i) {
                     return <th key={i} style={{ background: C.deepNavy, color: "#fff", textAlign: "left", padding: "8px 10px", fontSize: 10.5, fontWeight: 600, position: "sticky", top: 0, whiteSpace: "nowrap" }}>{h}</th>;
                   })}
                 </tr>
@@ -1262,7 +1340,7 @@ function WorksheetTab(props) {
         )}
       </Section>
 
-      <ScenarioModal scenario={editing} nodes={nodes} studyType={studyType} team={project.info.team || []} facility={project.info.facility || project.info.title || ""} onClose={function () { setEditing(null); }} onSave={save} />
+      <ScenarioModal scenario={editing} nodes={nodes} studyType={studyType} guidewords={gwList} unitLabel={uLabel} team={project.info.team || []} facility={project.info.facility || project.info.title || ""} onClose={function () { setEditing(null); }} onSave={save} />
     </div>
   );
 }
@@ -1351,7 +1429,8 @@ function ScenarioModal(props) {
     if (cur && list.indexOf(cur) < 0) base.unshift({ value: cur, label: cur + "  (tersimpan)" });
     return base;
   }
-  const gwOptions = withCurrent(gwListFor(studyType), s.guideword);
+  const uLabel = props.unitLabel || (isHazop ? "Node" : "Sistem");
+  const gwOptions = withCurrent(props.guidewords || gwListForProject({ info: { studyType: studyType } }), s.guideword);
   const paramOptions = withCurrent(HAZOP_PARAMETERS, s.parameter);
   const partyOptions = (props.team || []).filter(function (m) { return (m.name || "").trim(); })
     .map(function (m) { return { value: m.name, label: m.name, hint: [m.role, m.company].filter(Boolean).join(" · ") }; });
@@ -1391,7 +1470,7 @@ function ScenarioModal(props) {
            </>}>
       <div className="space-y-4">
         <div className="grid md:grid-cols-2 gap-4">
-          <Field label="Node (referensi ke Node Studi)" required>
+          <Field label={uLabel + " (referensi ke daftar " + uLabel + ")"} required>
             <Combobox value={s.nodeCode} onChange={function (v) { f("nodeCode", v); }}
                       options={nodeOptions} placeholder="Cari & pilih node…" />
           </Field>
@@ -1418,7 +1497,7 @@ function ScenarioModal(props) {
           </div>
         ) : (props.nodes || []).length === 0 ? (
           <div className="rounded-lg px-3 py-2.5 flex items-center gap-2" style={{ background: "#FBE9E9", color: C.red, fontSize: 12 }}>
-            <AlertTriangle size={14} /> Belum ada node. Tutup dan definisikan node pada tab “Node HAZID”.
+            <AlertTriangle size={14} /> Belum ada {uLabel}. Tutup dan definisikan {uLabel} pada tab terkait.
           </div>
         ) : null}
 
@@ -1769,6 +1848,7 @@ function ReportTab(props) {
   const nodes = project.nodes || [];
   const studyType = studyTypeOf(project);
   const isHazop = studyType === "HAZOP";
+  const uLabel = unitLabel(project);
   const [sortBy, setSortBy] = useState("rpn1_desc");
 
   const stats = useMemo(function () {
@@ -1842,7 +1922,7 @@ function ReportTab(props) {
         <div className="px-7 py-6 text-white" style={{ background: GRAD.brand }}>
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div className="flex items-center gap-3">
-              <img src="/logo-full-white.png" alt="HAZID App" style={{ height: 30, width: "auto" }} />
+              <img src="/logo-full-white.png" alt="Hazard Study App" style={{ height: 30, width: "auto" }} />
               <div style={{ borderLeft: "1px solid rgba(255,255,255,0.28)", paddingLeft: 12 }}>
                 <div className="font-bold tracking-tight" style={{ fontSize: 12.5 }}>NUSA SAFETY</div>
                 <div style={{ fontSize: 10, color: "#B7DCC9" }}>PT. Nusa Rendra Jayatama · QHSE &amp; Fire Protection</div>
@@ -1915,7 +1995,7 @@ function ReportTab(props) {
                 <table style={{ borderCollapse: "collapse", fontSize: 11.5, width: "100%", minWidth: 860 }}>
                   <thead>
                     <tr>
-                      {["#", "Node"].concat(isHazop ? ["Parameter"] : []).concat(["Guideword", "Deskripsi Bahaya", "Awal", "Sisa", "Prioritas", "Status"]).map(function (h, i) {
+                      {["#", uLabel].concat(isHazop ? ["Parameter"] : []).concat(["Guideword", "Deskripsi Bahaya", "Awal", "Sisa", "Prioritas", "Status"]).map(function (h, i) {
                         return <th key={i} style={{ background: C.navy, color: "#fff", textAlign: "left", padding: "8px 10px", fontSize: 10.5, fontWeight: 600, whiteSpace: "nowrap" }}>{h}</th>;
                       })}
                     </tr>
@@ -2069,7 +2149,7 @@ function Editor(props) {
   const tabs = [
     { id: "info", label: "Informasi", icon: <Info size={15} /> },
     { id: "criteria", label: "Kriteria Risiko", icon: <Grid3x3 size={15} /> },
-    { id: "nodes", label: "Node " + studyLabel(studyType), icon: <LayoutDashboard size={15} /> },
+    { id: "nodes", label: unitLabel(project), icon: <LayoutDashboard size={15} /> },
     { id: "worksheet", label: "Lembar Kerja", icon: <FileText size={15} /> },
     { id: "actions", label: "Daftar Tindakan", icon: <ClipboardList size={15} /> },
     { id: "summary", label: "Ringkasan", icon: <BarChart3 size={15} /> },
@@ -2176,6 +2256,8 @@ async function buildHazidWorkbook(project, logoDataUrl) {
   const studyType = studyTypeOf(project);
   const isHazop = studyType === "HAZOP";
   const TYPE = studyLabel(studyType);
+  const uLabel = unitLabel(project);
+  const uLabelShort = uLabel.length > 24 ? uLabel.slice(0, 24) : uLabel;
 
   const C = {
     deep: "FF0A4A33", brand: "FF0E7A52", accent: "FF17A06B",
@@ -2200,7 +2282,7 @@ async function buildHazidWorkbook(project, logoDataUrl) {
   };
 
   const wb = new ExcelJS.Workbook();
-  wb.creator = "HAZID App — Nusa Safety";
+  wb.creator = "Hazard Study App — Nusa Safety";
   wb.created = new Date();
 
   function banner(ws, row, c1, c2, text, bg, size) {
@@ -2242,7 +2324,7 @@ async function buildHazidWorkbook(project, logoDataUrl) {
       try {
         const imgId = wb.addImage({ base64: logoDataUrl, extension: "png" });
         ws.getRow(1).height = 24; ws.getRow(2).height = 24; ws.getRow(3).height = 18;
-        ws.addImage(imgId, { tl: { col: 0.15, row: 0.25 }, ext: { width: 235, height: 49 } });
+        ws.addImage(imgId, { tl: { col: 0.15, row: 0.25 }, ext: { width: 226, height: 49 } });
       } catch (e) {}
     }
     let r = 5;
@@ -2363,9 +2445,9 @@ async function buildHazidWorkbook(project, logoDataUrl) {
 
   // ─────────────────────────────────────── HAZID NODES ──
   {
-    const ws = wb.addWorksheet("Node " + TYPE);
+    const ws = wb.addWorksheet(isHazop ? "Node" : uLabelShort);
     [6, 12, 30, 30, 18, 34, 28, 24].forEach(function (w, i) { ws.getColumn(i + 1).width = w; });
-    banner(ws, 1, 1, 8, "NODE STUDI " + TYPE, C.deep, 14);
+    banner(ws, 1, 1, 8, "DAFTAR " + uLabel.toUpperCase() + " — STUDI " + TYPE, C.deep, 14);
     headerRow(ws, 2, ["No", "Kode", "Deskripsi (ID)", "Description (EN)", "Drawing / P&ID", "Batasan / Boundaries", "Sistem Termasuk", "Dikecualikan"]);
     let r = 3;
     if (nodes.length === 0) {
@@ -2395,7 +2477,7 @@ async function buildHazidWorkbook(project, logoDataUrl) {
     widths.forEach(function (w, i) { ws.getColumn(i + 1).width = w; });
     const nCols = widths.length;
     banner(ws, 1, 1, nCols, "LEMBAR KERJA " + TYPE + " — " + (isHazop ? "HAZARD & OPERABILITY WORKSHEET" : "HAZARD IDENTIFICATION WORKSHEET"), C.deep, 14);
-    const head = ["No", "Node"].concat(isHazop ? ["Parameter"] : [])
+    const head = ["No", uLabelShort].concat(isHazop ? ["Parameter"] : [])
       .concat(["Guideword", "Penyimpangan", "Deskripsi Bahaya", "Penyebab", "Konsekuensi",
         "Safeguard Eksisting", "L", "C", "RPN", "Risiko Awal", "Rekomendasi", "PJ", "Target", "Status",
         "L", "C", "RPN", "Risiko Sisa", "Ref"]);
@@ -2443,7 +2525,7 @@ async function buildHazidWorkbook(project, logoDataUrl) {
     const ws = wb.addWorksheet("Daftar Tindakan");
     [12, 9, 8, 40, 18, 12, 12, 12, 38, 34].forEach(function (w, i) { ws.getColumn(i + 1).width = w; });
     banner(ws, 1, 1, 10, "DAFTAR TINDAKAN / ACTION REGISTER", C.deep, 14);
-    headerRow(ws, 2, ["Ref", "No " + TYPE, "Node", "Rekomendasi", "Penanggung Jawab", "Target", "Prioritas", "Status", "Detail Hasil Tindakan", "Saran Pengendalian Tambahan"]);
+    headerRow(ws, 2, ["Ref", "No " + TYPE, uLabelShort, "Rekomendasi", "Penanggung Jawab", "Target", "Prioritas", "Status", "Detail Hasil Tindakan", "Saran Pengendalian Tambahan"]);
     let r = 3;
     const acts = scenarios.filter(function (s) { return (s.recommendation || "").trim(); });
     if (acts.length === 0) {
@@ -2567,6 +2649,7 @@ async function exportPdf(project) {
   const scenarios = project.scenarios || [];
   const studyType = studyTypeOf(project);
   const isHazop = studyType === "HAZOP";
+  const uLabel = unitLabel(project);
 
   const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
   const pageW = doc.internal.pageSize.getWidth();
@@ -2588,11 +2671,11 @@ async function exportPdf(project) {
     doc.setFillColor(cBrand[0], cBrand[1], cBrand[2]);
     doc.rect(0, 56, pageW, 3, "F");
     if (logo) {
-      const h = 24, w = h * (2858 / 599);
+      const h = 24, w = h * (1600 / 347);
       try { doc.addImage(logo, "PNG", margin, 16, w, h); } catch (e) {}
     } else {
       doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(15);
-      doc.text("HAZID APP", margin, 35);
+      doc.text("HAZARD STUDY APP", margin, 35);
     }
     doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(12);
     doc.text("Laporan Akhir Studi " + studyLabel(studyType), pageW - margin, 28, { align: "right" });
@@ -2700,7 +2783,7 @@ async function exportPdf(project) {
         s.status || "");
       return row;
     });
-    const wsHead = ["No", "Node"].concat(isHazop ? ["Parameter"] : [])
+    const wsHead = ["No", uLabel].concat(isHazop ? ["Parameter"] : [])
       .concat(["Guideword", "Penyimpangan", "Deskripsi Bahaya", "Penyebab", "Konsekuensi", "Safeguard", "Awal", "Rekomendasi", "Sisa", "Status"]);
     const cs = {};
     let ci = 0;
@@ -2744,7 +2827,7 @@ async function exportPdf(project) {
     });
     autoTable(doc, Object.assign({}, tableOpts, {
       startY: 82,
-      head: [["Ref", "Node", "Prioritas", "Rekomendasi", "PJ", "Target", "Status", "Detail Hasil Tindakan", "Saran Tambahan", "Foto"]],
+      head: [["Ref", uLabel, "Prioritas", "Rekomendasi", "PJ", "Target", "Status", "Detail Hasil Tindakan", "Saran Tambahan", "Foto"]],
       body: arBody,
       columnStyles: {
         0: { cellWidth: 48, fontStyle: "bold" },
@@ -2804,7 +2887,7 @@ async function exportPdf(project) {
     doc.setDrawColor(cLine[0], cLine[1], cLine[2]); doc.setLineWidth(0.5);
     doc.line(margin, pageH - 26, pageW - margin, pageH - 26);
     doc.setFont("helvetica", "normal"); doc.setFontSize(7.5); doc.setTextColor(cSub[0], cSub[1], cSub[2]);
-    doc.text("Dihasilkan oleh HAZID App — Nusa Safety", margin, pageH - 14);
+    doc.text("Dihasilkan oleh Hazard Study App — Nusa Safety", margin, pageH - 14);
     doc.text("Halaman " + i + " dari " + total, pageW - margin, pageH - 14, { align: "right" });
   }
 
@@ -2819,7 +2902,7 @@ function blankProject(owner) {
   return {
     id: uid("prj"), owner: owner, createdAt: nowISO(), updatedAt: nowISO(),
     info: { title: "", number: "", facility: "", location: "", client: "",
-      consultant: "PT. Nusa Rendra Jayatama (Nusa Safety)", studyDate: "", leader: "", rev: "0", studyType: "HAZID", team: [] },
+      consultant: "PT. Nusa Rendra Jayatama (Nusa Safety)", studyDate: "", leader: "", rev: "0", studyType: "HAZID", hazidScope: "Sistem", team: [] },
     nodes: [], scenarios: [],
   };
 }
@@ -3147,9 +3230,9 @@ export default function App() {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: GRAD.brand }}>
         <div className="flex flex-col items-center gap-3 text-white">
-          <img src="/logo-full-white.png" alt="HAZID App" style={{ height: 34, width: "auto", opacity: 0.96 }} />
+          <img src="/logo-full-white.png" alt="Hazard Study App" style={{ height: 34, width: "auto", opacity: 0.96 }} />
           <div className="flex items-center gap-2" style={{ fontSize: 13, color: "#CDE7DA" }}>
-            <Loader2 size={16} className="animate-spin" /> Memuat HAZID App…
+            <Loader2 size={16} className="animate-spin" /> Memuat Hazard Study App…
           </div>
         </div>
       </div>

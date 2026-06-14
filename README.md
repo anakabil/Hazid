@@ -23,7 +23,7 @@ async dengan *in-memory fallback*, hook konfirmasi, dan ekspor data.
   5. Daftar Tindakan (otomatis dari rekomendasi) — **+ detail hasil, foto bukti, saran pengendalian tambahan, sort & filter**
   6. Ringkasan (grafik distribusi risiko awal vs sisa)
   7. **Laporan Akhir** (komprehensif, bisa diurutkan per tingkat risiko, siap cetak/PDF)
-- **Tema emerald (hijau eksklusif)** dengan logo HAZID App, gradien & elevasi (tidak flat).
+- **Tema emerald (hijau eksklusif)** dengan logo Hazard Study App, gradien & elevasi (tidak flat).
 - **Rekomendasikan oleh AI** (Fitur baru): pada lembar kerja, isi Guideword + Penyimpangan
   lalu klik tombol AI — bahaya, penyebab, konsekuensi, pengaman, rekomendasi, dan skor
   risiko awal terisi otomatis (via Anthropic API, endpoint `/api/recommend`). Hanya mengisi
