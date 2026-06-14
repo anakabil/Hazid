@@ -52,6 +52,7 @@ const RISK = {
 };
 
 /* ---------- CCPS reference data ---------- */
+/* Legacy hybrid set (kept for backward-compatibility display of old projects) */
 const GUIDEWORDS = [
   "NO / NOT", "MORE", "LESS", "REVERSE", "OTHER THAN", "AS WELL AS", "PART OF",
   "EARLY / LATE", "FIRE", "EXPLOSION", "TOXIC RELEASE", "OVERPRESSURE",
@@ -59,6 +60,40 @@ const GUIDEWORDS = [
   "WRONG OPERATION", "MAINTENANCE ERROR", "MANAGEMENT OF CHANGE",
   "FLOODING", "EARTHQUAKE", "WIND / LIGHTNING", "THIRD PARTY ACTION",
 ];
+
+/* HAZID — kategori bahaya tingkat tinggi (umum & eksternal) */
+const HAZID_GUIDEWORDS = [
+  "FIRE", "EXPLOSION", "TOXIC RELEASE", "OVERPRESSURE", "LOSS OF CONTAINMENT",
+  "CONTAMINATION", "CORROSION / EROSION", "STRUCTURAL FAILURE", "DROPPED OBJECT",
+  "ELECTRICAL HAZARD", "WRONG OPERATION", "HUMAN ERROR", "MAINTENANCE ERROR",
+  "MANAGEMENT OF CHANGE", "FLOODING", "EARTHQUAKE", "WIND / LIGHTNING",
+  "EXTREME WEATHER", "THIRD PARTY ACTION", "SECURITY THREAT",
+];
+
+/* HAZOP — 8 kata panduan deviasi klasik (IEC 61882) + turunan temporal/laju */
+const HAZOP_GUIDEWORDS = [
+  "NO / NONE", "MORE / HIGH", "LESS / LOW", "REVERSE", "AS WELL AS",
+  "PART OF", "OTHER THAN", "EARLY", "LATE", "BEFORE", "AFTER", "FASTER", "SLOWER",
+];
+
+/* HAZOP — parameter proses yang dipasangkan dengan guideword */
+const HAZOP_PARAMETERS = [
+  "Flow / Aliran", "Pressure / Tekanan", "Temperature / Suhu", "Level / Ketinggian",
+  "Composition / Komposisi", "Phase / Fasa", "Flowrate / Laju Alir", "Viscosity / Viskositas",
+  "Reaction / Reaksi", "Mixing / Pengadukan", "Time / Waktu", "Speed / Kecepatan",
+  "Frequency / Frekuensi", "Voltage / Tegangan", "Current / Arus", "Signal / Sinyal",
+  "Corrosion / Korosi", "Relief / Pelepasan", "Maintenance / Pemeliharaan", "Start-up / Shutdown",
+];
+
+const STUDY_TYPES = ["HAZID", "HAZOP"];
+function studyTypeOf(project) {
+  return (project && project.info && project.info.studyType === "HAZOP") ? "HAZOP" : "HAZID";
+}
+function gwListFor(studyType) { return studyType === "HAZOP" ? HAZOP_GUIDEWORDS : HAZID_GUIDEWORDS; }
+function studyLabel(studyType) { return studyType === "HAZOP" ? "HAZOP" : "HAZID"; }
+function studyFullLabel(studyType) {
+  return studyType === "HAZOP" ? "Hazard & Operability Study" : "Hazard Identification";
+}
 
 const LIKELIHOOD = [
   { v: 1, name: "Rare", id: "Belum pernah terjadi di industri", freq: "< 1 kali per 1.000.000 tahun", freqSci: "< 1×10⁻⁶ /tahun" },
@@ -754,8 +789,40 @@ function InfoTab(props) {
     ["leader", "Ketua Studi / Study Leader", false],
     ["rev", "Revisi / Rev", false],
   ];
+  const studyType = info.studyType === "HAZOP" ? "HAZOP" : "HAZID";
+  const typeCards = [
+    { v: "HAZID", t: "HAZID", d: "Hazard Identification — identifikasi bahaya tingkat tinggi & luas (termasuk bahaya eksternal). Cocok untuk tahap awal/konsep." },
+    { v: "HAZOP", t: "HAZOP", d: "Hazard & Operability — kajian rinci penyimpangan parameter proses (aliran, tekanan, suhu…) per node P&ID. Untuk desain matang/operasi." },
+  ];
   return (
     <div className="space-y-6">
+      <Section title="Jenis Studi / Study Type" icon={<ListChecks size={16} />}
+               sub="Menentukan set guideword, kolom lembar kerja, dan judul laporan. Dapat diubah kapan saja.">
+        <div className="grid sm:grid-cols-2 gap-3">
+          {typeCards.map(function (c) {
+            const active = studyType === c.v;
+            return (
+              <button key={c.v} onClick={function () { set("studyType", c.v); }}
+                      className="text-left rounded-xl p-4 transition"
+                      style={{
+                        border: "1.5px solid " + (active ? C.navy : C.border),
+                        background: active ? C.mint : "#fff",
+                        boxShadow: active ? "0 2px 10px rgba(14,90,67,0.12)" : "none",
+                        cursor: "pointer",
+                      }}>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className="inline-flex items-center justify-center rounded-lg" style={{ width: 22, height: 22, background: active ? C.navy : C.faint, color: active ? "#fff" : C.sub }}>
+                    {active ? <CheckCircle2 size={14} /> : <span style={{ width: 9, height: 9, borderRadius: 9, border: "2px solid " + C.sub, display: "block" }} />}
+                  </span>
+                  <span className="font-bold" style={{ fontSize: 15, color: active ? C.deepNavy : C.ink }}>{c.t}</span>
+                </div>
+                <div style={{ fontSize: 11.5, color: C.sub, lineHeight: 1.5 }}>{c.d}</div>
+              </button>
+            );
+          })}
+        </div>
+      </Section>
+
       <Section title="Informasi Proyek" icon={<Info size={16} />}>
         <div className="grid md:grid-cols-2 gap-4">
           {fields.map(function (f) {
@@ -948,7 +1015,7 @@ function NodesTab(props) {
   return (
     <div>
       {ConfirmDialog}
-      <Section title="Node Studi HAZID" icon={<Grid3x3 size={16} />}
+      <Section title={"Node Studi " + studyLabel(studyTypeOf(props.project))} icon={<Grid3x3 size={16} />}
                sub="Batasan & sistem yang dikaji (CCPS §2.3). Kolom “Dipakai” menautkan ke lembar kerja."
                action={<Btn sm onClick={function () { setEditing(blank()); }}><Plus size={14} /> Tambah Node</Btn>}>
         {nodes.length === 0 ? <Empty text="Belum ada node. Definisikan node untuk membatasi lingkup studi." /> : (
@@ -1046,6 +1113,8 @@ function WorksheetTab(props) {
   const project = props.project;
   const scenarios = project.scenarios || [];
   const nodes = project.nodes || [];
+  const studyType = studyTypeOf(project);
+  const isHazop = studyType === "HAZOP";
   const [editing, setEditing] = useState(null);
   const { confirm, ConfirmDialog } = useConfirm();
   const [search, setSearch] = useState("");
@@ -1092,7 +1161,7 @@ function WorksheetTab(props) {
   }
   function blank() {
     return {
-      id: "", nodeCode: nodes[0] ? nodes[0].code : "", guideword: GUIDEWORDS[0],
+      id: "", nodeCode: nodes[0] ? nodes[0].code : "", parameter: "", guideword: gwListFor(studyType)[0],
       deviation: "", hazard: "", causes: "", consequences: "", safeguards: "",
       L1: "", C1: "", recommendation: "", party: "", targetDate: "", status: "Open",
       L2: "", C2: "", actionRef: nextRef(),
@@ -1119,8 +1188,8 @@ function WorksheetTab(props) {
   return (
     <div>
       {ConfirmDialog}
-      <Section title="Lembar Kerja HAZID" icon={<FileText size={16} />}
-               sub={scenarios.length + " skenario · RPN dihitung otomatis (L × C)"}
+      <Section title={"Lembar Kerja " + studyLabel(studyType)} icon={<FileText size={16} />}
+               sub={scenarios.length + " skenario · RPN dihitung otomatis (L × C)" + (isHazop ? " · mode HAZOP (Guideword × Parameter)" : "")}
                action={
                  <Btn sm onClick={function () {
                    if (nodes.length === 0) { props.onNeedNode(); return; }
@@ -1145,7 +1214,7 @@ function WorksheetTab(props) {
             <table style={{ borderCollapse: "collapse", fontSize: 11.5, minWidth: 1180 }}>
               <thead>
                 <tr>
-                  {["No", "Node", "Guideword", "Deskripsi Bahaya", "Penyebab", "Konsekuensi", "Safeguard", "Awal", "Rekomendasi", "PJ", "Status", "Sisa", "Ref", ""].map(function (h, i) {
+                  {["No", "Node"].concat(isHazop ? ["Parameter"] : []).concat(["Guideword", "Deskripsi Bahaya", "Penyebab", "Konsekuensi", "Safeguard", "Awal", "Rekomendasi", "PJ", "Status", "Sisa", "Ref", ""]).map(function (h, i) {
                     return <th key={i} style={{ background: C.deepNavy, color: "#fff", textAlign: "left", padding: "8px 10px", fontSize: 10.5, fontWeight: 600, position: "sticky", top: 0, whiteSpace: "nowrap" }}>{h}</th>;
                   })}
                 </tr>
@@ -1164,6 +1233,7 @@ function WorksheetTab(props) {
                           {nodeKnown ? s.nodeCode : "⚠ " + s.nodeCode}
                         </span>
                       </td>
+                      {isHazop ? <td style={cellTd(130)}><span style={{ fontWeight: 600, color: C.navy }}>{s.parameter || "—"}</span></td> : null}
                       <td style={cellTd()}><span style={{ fontWeight: 600 }}>{s.guideword}</span></td>
                       <td style={cellTd(220)}>{trim(s.hazard, 160)}</td>
                       <td style={cellTd(180)}>{trim(s.causes, 120)}</td>
@@ -1192,7 +1262,7 @@ function WorksheetTab(props) {
         )}
       </Section>
 
-      <ScenarioModal scenario={editing} nodes={nodes} team={project.info.team || []} facility={project.info.facility || project.info.title || ""} onClose={function () { setEditing(null); }} onSave={save} />
+      <ScenarioModal scenario={editing} nodes={nodes} studyType={studyType} team={project.info.team || []} facility={project.info.facility || project.info.title || ""} onClose={function () { setEditing(null); }} onSave={save} />
     </div>
   );
 }
@@ -1220,18 +1290,33 @@ function ScenarioModal(props) {
   const [s, setS] = useState(null);
   const [aiBusy, setAiBusy] = useState(false);
   const [aiMsg, setAiMsg] = useState(null);
+  const studyType = props.studyType === "HAZOP" ? "HAZOP" : "HAZID";
+  const isHazop = studyType === "HAZOP";
   useEffect(function () { setS(props.scenario ? Object.assign({}, props.scenario) : null); setAiMsg(null); }, [props.scenario]);
   if (!s) return null;
   function f(k, v) { setS(function (x) { return Object.assign({}, x, { [k]: v }); }); }
+  // In HAZOP, auto-compose the deviation from Guideword × Parameter while it's still empty.
+  function setDev(k, v) {
+    setS(function (x) {
+      const n = Object.assign({}, x, { [k]: v });
+      if (isHazop && (k === "parameter" || k === "guideword")) {
+        const gwS = String((k === "guideword" ? v : n.guideword) || "").split(" / ")[0].trim();
+        const pS = String((k === "parameter" ? v : n.parameter) || "").split(" / ")[0].trim();
+        if (!String(n.deviation || "").trim() && gwS && pS) n.deviation = (gwS + " " + pS).trim();
+      }
+      return n;
+    });
+  }
   async function runAI() {
-    if (!String(s.guideword || "").trim() && !String(s.deviation || "").trim()) {
-      setAiMsg({ type: "err", text: "Isi Guideword dan/atau Penyimpangan terlebih dahulu." });
+    if (!String(s.guideword || "").trim() && !String(s.deviation || "").trim() && !String(s.parameter || "").trim()) {
+      setAiMsg({ type: "err", text: isHazop ? "Isi Parameter dan/atau Guideword terlebih dahulu." : "Isi Guideword dan/atau Penyimpangan terlebih dahulu." });
       return;
     }
     setAiBusy(true); setAiMsg(null);
     try {
       const selNode = (props.nodes || []).find(function (n) { return n.code === s.nodeCode; });
       const out = await aiRecommendScenario({
+        studyType: studyType, parameter: s.parameter || "",
         guideword: s.guideword, deviation: s.deviation,
         node: selNode ? (selNode.code + " — " + (selNode.descId || selNode.descEn || "")) : s.nodeCode,
         facility: props.facility || "", hazard: s.hazard || "",
@@ -1261,7 +1346,13 @@ function ScenarioModal(props) {
   const nodeOptions = (props.nodes || []).map(function (n) {
     return { value: n.code, label: n.code + (n.descId ? " — " + n.descId : ""), hint: n.boundaries || n.included || "" };
   });
-  const gwOptions = GUIDEWORDS.map(function (g) { return { value: g, label: g }; });
+  function withCurrent(list, cur) {
+    const base = list.map(function (g) { return { value: g, label: g }; });
+    if (cur && list.indexOf(cur) < 0) base.unshift({ value: cur, label: cur + "  (tersimpan)" });
+    return base;
+  }
+  const gwOptions = withCurrent(gwListFor(studyType), s.guideword);
+  const paramOptions = withCurrent(HAZOP_PARAMETERS, s.parameter);
   const partyOptions = (props.team || []).filter(function (m) { return (m.name || "").trim(); })
     .map(function (m) { return { value: m.name, label: m.name, hint: [m.role, m.company].filter(Boolean).join(" · ") }; });
   const selectedNode = (props.nodes || []).find(function (n) { return n.code === s.nodeCode; });
@@ -1300,13 +1391,19 @@ function ScenarioModal(props) {
            </>}>
       <div className="space-y-4">
         <div className="grid md:grid-cols-2 gap-4">
-          <Field label="Node (referensi ke Node HAZID)" required>
+          <Field label="Node (referensi ke Node Studi)" required>
             <Combobox value={s.nodeCode} onChange={function (v) { f("nodeCode", v); }}
                       options={nodeOptions} placeholder="Cari & pilih node…" />
           </Field>
-          <Field label="Guideword / Kata Panduan" required>
-            <Combobox value={s.guideword} onChange={function (v) { f("guideword", v); }}
-                      options={gwOptions} placeholder="Cari guideword…" />
+          {isHazop ? (
+            <Field label="Parameter Proses" required>
+              <Combobox value={s.parameter} onChange={function (v) { setDev("parameter", v); }}
+                        options={paramOptions} placeholder="cth. Pressure / Tekanan…" />
+            </Field>
+          ) : null}
+          <Field label={isHazop ? "Guideword (Kata Panduan Deviasi)" : "Guideword / Kata Panduan"} required>
+            <Combobox value={s.guideword} onChange={function (v) { setDev("guideword", v); }}
+                      options={gwOptions} placeholder={isHazop ? "cth. MORE / HIGH…" : "Cari guideword…"} />
           </Field>
         </div>
 
@@ -1325,8 +1422,10 @@ function ScenarioModal(props) {
           </div>
         ) : null}
 
-        <Field label="Penyimpangan / Deviation">
-          <TextInput value={s.deviation} onChange={function (e) { f("deviation", e.target.value); }} placeholder="cth. Kebakaran Nacelle / Nacelle Fire" />
+        <Field label={isHazop ? "Penyimpangan / Deviation (Guideword × Parameter)" : "Penyimpangan / Deviation"}>
+          <TextInput value={s.deviation} onChange={function (e) { f("deviation", e.target.value); }}
+                     placeholder={isHazop ? "cth. MORE Pressure / Tekanan berlebih" : "cth. Kebakaran Nacelle / Nacelle Fire"} />
+          {isHazop ? <div style={{ fontSize: 10.5, color: C.sub, marginTop: 4 }}>Terisi otomatis dari Guideword × Parameter — boleh diedit manual.</div> : null}
         </Field>
         <Field label="Deskripsi Bahaya / Hazard Description" required>
           <TextArea value={s.hazard} onChange={function (e) { f("hazard", e.target.value); }} />
@@ -1340,7 +1439,7 @@ function ScenarioModal(props) {
               {aiBusy ? "AI sedang menyusun…" : "Rekomendasikan oleh AI"}
             </Btn>
             <span style={{ fontSize: 11.5, color: C.sub, flex: "1 1 240px", lineHeight: 1.45 }}>
-              Melengkapi otomatis <b>bahaya, penyebab, konsekuensi, pengaman & skor risiko</b> dari Guideword + Penyimpangan yang telah diisi. Hanya mengisi kolom yang masih kosong.
+              Melengkapi otomatis <b>bahaya, penyebab, konsekuensi, pengaman & skor risiko</b> dari {isHazop ? "Parameter + Guideword" : "Guideword + Penyimpangan"} yang telah diisi. Hanya mengisi kolom yang masih kosong.
             </span>
           </div>
           {aiMsg ? (
@@ -1668,6 +1767,8 @@ function ReportTab(props) {
   const info = project.info || {};
   const scenarios = project.scenarios || [];
   const nodes = project.nodes || [];
+  const studyType = studyTypeOf(project);
+  const isHazop = studyType === "HAZOP";
   const [sortBy, setSortBy] = useState("rpn1_desc");
 
   const stats = useMemo(function () {
@@ -1748,8 +1849,8 @@ function ReportTab(props) {
               </div>
             </div>
             <div style={{ textAlign: "right" }}>
-              <div className="font-bold" style={{ fontSize: 13 }}>LAPORAN STUDI HAZID</div>
-              <div style={{ fontSize: 10.5, color: "#B7DCC9" }}>Hazard Identification Report</div>
+              <div className="font-bold" style={{ fontSize: 13 }}>LAPORAN STUDI {studyLabel(studyType)}</div>
+              <div style={{ fontSize: 10.5, color: "#B7DCC9" }}>{studyFullLabel(studyType)}{isHazop ? " Report" : " Report"}</div>
             </div>
           </div>
           <h1 className="font-bold mt-5" style={{ fontSize: 22, letterSpacing: -0.3 }}>{info.title || "Tanpa Judul"}</h1>
@@ -1766,7 +1867,7 @@ function ReportTab(props) {
           {/* 1. Executive summary */}
           <ReportBlock no="1" title="Ringkasan Eksekutif">
             <p style={{ fontSize: 13, color: C.ink, lineHeight: 1.7 }}>
-              Studi HAZID pada <b>{info.facility || info.title || "fasilitas"}</b> mengidentifikasi <b>{scenarios.length} skenario bahaya</b> yang
+              Studi {studyLabel(studyType)} pada <b>{info.facility || info.title || "fasilitas"}</b> mengidentifikasi <b>{scenarios.length} skenario bahaya</b> yang
               tersebar pada <b>{nodes.length} node</b> kajian. Profil risiko awal menunjukkan{" "}
               <b style={{ color: RISK.Critical.bg }}>{stats.init.Critical} Critical</b>,{" "}
               <b style={{ color: RISK.High.bg }}>{stats.init.High} High</b>,{" "}
@@ -1814,7 +1915,7 @@ function ReportTab(props) {
                 <table style={{ borderCollapse: "collapse", fontSize: 11.5, width: "100%", minWidth: 860 }}>
                   <thead>
                     <tr>
-                      {["#", "Node", "Guideword", "Deskripsi Bahaya", "Awal", "Sisa", "Prioritas", "Status"].map(function (h, i) {
+                      {["#", "Node"].concat(isHazop ? ["Parameter"] : []).concat(["Guideword", "Deskripsi Bahaya", "Awal", "Sisa", "Prioritas", "Status"]).map(function (h, i) {
                         return <th key={i} style={{ background: C.navy, color: "#fff", textAlign: "left", padding: "8px 10px", fontSize: 10.5, fontWeight: 600, whiteSpace: "nowrap" }}>{h}</th>;
                       })}
                     </tr>
@@ -1829,6 +1930,7 @@ function ReportTab(props) {
                         <tr key={s.id} style={{ background: i % 2 ? C.faint : "#fff", verticalAlign: "top" }}>
                           <td style={cellTd()}><b style={{ color: C.navy }}>{i + 1}</b></td>
                           <td style={cellTd()}><span style={{ fontFamily: "ui-monospace, monospace", fontWeight: 700, color: C.navy }}>{s.nodeCode}</span></td>
+                          {isHazop ? <td style={cellTd()}><span style={{ fontWeight: 600, color: C.navy }}>{s.parameter || "—"}</span></td> : null}
                           <td style={cellTd()}><span style={{ fontWeight: 600 }}>{s.guideword}</span></td>
                           <td style={cellTd(360)}>
                             <div style={{ fontWeight: 600, color: C.ink }}>{s.deviation || trim(s.hazard, 60)}</div>
@@ -1958,6 +2060,7 @@ function RiskDistBars(props) {
 ============================================================================ */
 function Editor(props) {
   const project = props.project;
+  const studyType = studyTypeOf(project);
   const [tab, setTab] = useState("info");
   const [exportFmt, setExportFmt] = useState("xlsx");
   const [exporting, setExporting] = useState(false);
@@ -1966,7 +2069,7 @@ function Editor(props) {
   const tabs = [
     { id: "info", label: "Informasi", icon: <Info size={15} /> },
     { id: "criteria", label: "Kriteria Risiko", icon: <Grid3x3 size={15} /> },
-    { id: "nodes", label: "Node HAZID", icon: <LayoutDashboard size={15} /> },
+    { id: "nodes", label: "Node " + studyLabel(studyType), icon: <LayoutDashboard size={15} /> },
     { id: "worksheet", label: "Lembar Kerja", icon: <FileText size={15} /> },
     { id: "actions", label: "Daftar Tindakan", icon: <ClipboardList size={15} /> },
     { id: "summary", label: "Ringkasan", icon: <BarChart3 size={15} /> },
@@ -2002,6 +2105,7 @@ function Editor(props) {
           <div style={{ minWidth: 0 }}>
             <h1 className="font-bold truncate" style={{ fontSize: 17, color: C.ink, letterSpacing: -0.3 }}>
               {project.info.title || "Tanpa Judul"}
+              <span className="ml-2 align-middle rounded-md font-bold" style={{ fontSize: 10.5, padding: "2px 8px", background: C.navy, color: "#fff", letterSpacing: 0.3 }}>{studyType}</span>
             </h1>
             <p className="truncate" style={{ fontSize: 12, color: C.sub }}>
               {project.info.number || "No. —"}{project.info.client ? " · " + project.info.client : ""} · Rev {project.info.rev || "0"}
@@ -2069,6 +2173,9 @@ async function buildHazidWorkbook(project, logoDataUrl) {
   const info = project.info || {};
   const nodes = project.nodes || [];
   const scenarios = project.scenarios || [];
+  const studyType = studyTypeOf(project);
+  const isHazop = studyType === "HAZOP";
+  const TYPE = studyLabel(studyType);
 
   const C = {
     deep: "FF0A4A33", brand: "FF0E7A52", accent: "FF17A06B",
@@ -2139,7 +2246,7 @@ async function buildHazidWorkbook(project, logoDataUrl) {
       } catch (e) {}
     }
     let r = 5;
-    banner(ws, r, 1, 4, "LAPORAN STUDI HAZID — HAZARD IDENTIFICATION REPORT", C.deep, 14); r++;
+    banner(ws, r, 1, 4, "LAPORAN STUDI " + TYPE + " — " + (isHazop ? "HAZARD & OPERABILITY REPORT" : "HAZARD IDENTIFICATION REPORT"), C.deep, 14); r++;
     ws.mergeCells(r, 1, r, 4);
     const sub = ws.getCell(r, 1);
     sub.value = "Berdasarkan CCPS – Guidelines for Hazard Evaluation Procedures, 3rd Edition";
@@ -2256,9 +2363,9 @@ async function buildHazidWorkbook(project, logoDataUrl) {
 
   // ─────────────────────────────────────── HAZID NODES ──
   {
-    const ws = wb.addWorksheet("Node HAZID");
+    const ws = wb.addWorksheet("Node " + TYPE);
     [6, 12, 30, 30, 18, 34, 28, 24].forEach(function (w, i) { ws.getColumn(i + 1).width = w; });
-    banner(ws, 1, 1, 8, "NODE STUDI HAZID", C.deep, 14);
+    banner(ws, 1, 1, 8, "NODE STUDI " + TYPE, C.deep, 14);
     headerRow(ws, 2, ["No", "Kode", "Deskripsi (ID)", "Description (EN)", "Drawing / P&ID", "Batasan / Boundaries", "Sistem Termasuk", "Dikecualikan"]);
     let r = 3;
     if (nodes.length === 0) {
@@ -2280,45 +2387,51 @@ async function buildHazidWorkbook(project, logoDataUrl) {
     ws.views = [{ state: "frozen", ySplit: 2 }];
   }
 
-  // ─────────────────────────────────── HAZID WORKSHEET ──
+  // ─────────────────────────────────── WORKSHEET ──
   {
-    const ws = wb.addWorksheet("Lembar Kerja HAZID");
-    [5, 9, 16, 18, 34, 28, 28, 26, 6, 6, 8, 13, 34, 16, 12, 12, 6, 6, 8, 13, 10]
-      .forEach(function (w, i) { ws.getColumn(i + 1).width = w; });
-    banner(ws, 1, 1, 21, "LEMBAR KERJA HAZID — HAZARD IDENTIFICATION WORKSHEET", C.deep, 14);
-    headerRow(ws, 2, ["No", "Node", "Guideword", "Penyimpangan", "Deskripsi Bahaya", "Penyebab", "Konsekuensi",
-      "Safeguard Eksisting", "L", "C", "RPN", "Risiko Awal", "Rekomendasi", "PJ", "Target", "Status",
-      "L", "C", "RPN", "Risiko Sisa", "Ref"]);
+    const ws = wb.addWorksheet("Lembar Kerja " + TYPE);
+    const widths = [5, 9].concat(isHazop ? [16] : [])
+      .concat([16, 18, 34, 28, 28, 26, 6, 6, 8, 13, 34, 16, 12, 12, 6, 6, 8, 13, 10]);
+    widths.forEach(function (w, i) { ws.getColumn(i + 1).width = w; });
+    const nCols = widths.length;
+    banner(ws, 1, 1, nCols, "LEMBAR KERJA " + TYPE + " — " + (isHazop ? "HAZARD & OPERABILITY WORKSHEET" : "HAZARD IDENTIFICATION WORKSHEET"), C.deep, 14);
+    const head = ["No", "Node"].concat(isHazop ? ["Parameter"] : [])
+      .concat(["Guideword", "Penyimpangan", "Deskripsi Bahaya", "Penyebab", "Konsekuensi",
+        "Safeguard Eksisting", "L", "C", "RPN", "Risiko Awal", "Rekomendasi", "PJ", "Target", "Status",
+        "L", "C", "RPN", "Risiko Sisa", "Ref"]);
+    headerRow(ws, 2, head);
     let r = 3;
     if (scenarios.length === 0) {
-      ws.mergeCells(r, 1, r, 21); dataCell(ws, r, 1, "— belum ada skenario —", { italic: true, fg: C.sub, align: "center" });
+      ws.mergeCells(r, 1, r, nCols); dataCell(ws, r, 1, "— belum ada skenario —", { italic: true, fg: C.sub, align: "center" });
     } else {
       scenarios.forEach(function (s, i) {
         const r1 = rpnOf(s.L1, s.C1), r2 = rpnOf(s.L2, s.C2);
         const l1 = levelOf(r1), l2 = levelOf(r2);
         const bg = i % 2 ? C.faint : C.white;
         const st1 = lvlStyle(l1), st2 = lvlStyle(l2);
-        dataCell(ws, r, 1, i + 1, { bg: bg, align: "center", bold: true });
-        dataCell(ws, r, 2, s.nodeCode, { bg: bg, bold: true, fg: C.brand });
-        dataCell(ws, r, 3, s.guideword, { bg: bg, bold: true });
-        dataCell(ws, r, 4, s.deviation, { bg: bg });
-        dataCell(ws, r, 5, s.hazard, { bg: bg });
-        dataCell(ws, r, 6, s.causes, { bg: bg });
-        dataCell(ws, r, 7, s.consequences, { bg: bg });
-        dataCell(ws, r, 8, s.safeguards, { bg: bg });
-        dataCell(ws, r, 9, s.L1, { bg: bg, align: "center" });
-        dataCell(ws, r, 10, s.C1, { bg: bg, align: "center" });
-        dataCell(ws, r, 11, r1, { bg: bg, align: "center", bold: true });
-        dataCell(ws, r, 12, l1 || "—", { bg: l1 ? st1.bg : bg, fg: l1 ? st1.fg : C.sub, bold: true, align: "center" });
-        dataCell(ws, r, 13, s.recommendation, { bg: bg });
-        dataCell(ws, r, 14, s.party, { bg: bg, dash: true });
-        dataCell(ws, r, 15, s.targetDate, { bg: bg, dash: true });
-        dataCell(ws, r, 16, s.status, { bg: bg, align: "center" });
-        dataCell(ws, r, 17, s.L2, { bg: bg, align: "center" });
-        dataCell(ws, r, 18, s.C2, { bg: bg, align: "center" });
-        dataCell(ws, r, 19, r2, { bg: bg, align: "center", bold: true });
-        dataCell(ws, r, 20, l2 || "—", { bg: l2 ? st2.bg : bg, fg: l2 ? st2.fg : C.sub, bold: true, align: "center" });
-        dataCell(ws, r, 21, s.actionRef, { bg: bg, align: "center" });
+        let c = 1;
+        dataCell(ws, r, c++, i + 1, { bg: bg, align: "center", bold: true });
+        dataCell(ws, r, c++, s.nodeCode, { bg: bg, bold: true, fg: C.brand });
+        if (isHazop) dataCell(ws, r, c++, s.parameter, { bg: bg, bold: true, fg: C.brand, dash: true });
+        dataCell(ws, r, c++, s.guideword, { bg: bg, bold: true });
+        dataCell(ws, r, c++, s.deviation, { bg: bg });
+        dataCell(ws, r, c++, s.hazard, { bg: bg });
+        dataCell(ws, r, c++, s.causes, { bg: bg });
+        dataCell(ws, r, c++, s.consequences, { bg: bg });
+        dataCell(ws, r, c++, s.safeguards, { bg: bg });
+        dataCell(ws, r, c++, s.L1, { bg: bg, align: "center" });
+        dataCell(ws, r, c++, s.C1, { bg: bg, align: "center" });
+        dataCell(ws, r, c++, r1, { bg: bg, align: "center", bold: true });
+        dataCell(ws, r, c++, l1 || "—", { bg: l1 ? st1.bg : bg, fg: l1 ? st1.fg : C.sub, bold: true, align: "center" });
+        dataCell(ws, r, c++, s.recommendation, { bg: bg });
+        dataCell(ws, r, c++, s.party, { bg: bg, dash: true });
+        dataCell(ws, r, c++, s.targetDate, { bg: bg, dash: true });
+        dataCell(ws, r, c++, s.status, { bg: bg, align: "center" });
+        dataCell(ws, r, c++, s.L2, { bg: bg, align: "center" });
+        dataCell(ws, r, c++, s.C2, { bg: bg, align: "center" });
+        dataCell(ws, r, c++, r2, { bg: bg, align: "center", bold: true });
+        dataCell(ws, r, c++, l2 || "—", { bg: l2 ? st2.bg : bg, fg: l2 ? st2.fg : C.sub, bold: true, align: "center" });
+        dataCell(ws, r, c++, s.actionRef, { bg: bg, align: "center" });
         ws.getRow(r).height = 42; r++;
       });
     }
@@ -2330,7 +2443,7 @@ async function buildHazidWorkbook(project, logoDataUrl) {
     const ws = wb.addWorksheet("Daftar Tindakan");
     [12, 9, 8, 40, 18, 12, 12, 12, 38, 34].forEach(function (w, i) { ws.getColumn(i + 1).width = w; });
     banner(ws, 1, 1, 10, "DAFTAR TINDAKAN / ACTION REGISTER", C.deep, 14);
-    headerRow(ws, 2, ["Ref", "No HAZID", "Node", "Rekomendasi", "Penanggung Jawab", "Target", "Prioritas", "Status", "Detail Hasil Tindakan", "Saran Pengendalian Tambahan"]);
+    headerRow(ws, 2, ["Ref", "No " + TYPE, "Node", "Rekomendasi", "Penanggung Jawab", "Target", "Prioritas", "Status", "Detail Hasil Tindakan", "Saran Pengendalian Tambahan"]);
     let r = 3;
     const acts = scenarios.filter(function (s) { return (s.recommendation || "").trim(); });
     if (acts.length === 0) {
@@ -2414,9 +2527,9 @@ async function exportXlsx(project) {
   const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  const safe = (info.title || "HAZID").replace(/[^a-z0-9]+/gi, "_").slice(0, 40);
+  const safe = (info.title || "Studi").replace(/[^a-z0-9]+/gi, "_").slice(0, 40);
   a.href = url;
-  a.download = "HAZID_" + safe + ".xlsx";
+  a.download = studyLabel(studyTypeOf(project)) + "_" + safe + ".xlsx";
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -2452,6 +2565,8 @@ async function exportPdf(project) {
   const info = project.info || {};
   const nodes = project.nodes || [];
   const scenarios = project.scenarios || [];
+  const studyType = studyTypeOf(project);
+  const isHazop = studyType === "HAZOP";
 
   const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
   const pageW = doc.internal.pageSize.getWidth();
@@ -2480,7 +2595,7 @@ async function exportPdf(project) {
       doc.text("HAZID APP", margin, 35);
     }
     doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(12);
-    doc.text("Laporan Akhir Studi HAZID", pageW - margin, 28, { align: "right" });
+    doc.text("Laporan Akhir Studi " + studyLabel(studyType), pageW - margin, 28, { align: "right" });
     doc.setFont("helvetica", "normal"); doc.setFontSize(8);
     doc.setTextColor(196, 224, 212);
     doc.text("PT. Nusa Rendra Jayatama · Nusa Safety", pageW - margin, 42, { align: "right" });
@@ -2499,7 +2614,7 @@ async function exportPdf(project) {
   let y = 78;
   doc.setTextColor(cInk[0], cInk[1], cInk[2]);
   doc.setFont("helvetica", "bold"); doc.setFontSize(15);
-  doc.text(info.title || "Studi HAZID", margin, y);
+  doc.text(info.title || ("Studi " + studyLabel(studyType)), margin, y);
   y += 16;
   doc.setFont("helvetica", "normal"); doc.setFontSize(9);
   doc.setTextColor(cSub[0], cSub[1], cSub[2]);
@@ -2563,41 +2678,49 @@ async function exportPdf(project) {
     "    ·    Selesai (Closed): " + (stc["Closed"] || 0) +
     "    ·    Penyelesaian: " + (acts ? Math.round((stc["Closed"] / acts) * 100) : 0) + "%", margin, y);
 
-  // ---------- HAZID Worksheet ----------
+  // ---------- Worksheet ----------
   if (scenarios.length) {
     doc.addPage();
     drawHeader();
     doc.setFont("helvetica", "bold"); doc.setFontSize(12); doc.setTextColor(cInk[0], cInk[1], cInk[2]);
-    doc.text("Lembar Kerja HAZID", margin, 74);
+    doc.text("Lembar Kerja " + studyLabel(studyType), margin, 74);
+    const awalIdx = isHazop ? 9 : 8;
+    const sisaIdx = isHazop ? 11 : 10;
+    const statusIdx = isHazop ? 12 : 11;
     const wsBody = scenarios.map(function (s, i) {
       const r1 = rpnOf(s.L1, s.C1), r2 = rpnOf(s.L2, s.C2);
       const lv1 = levelOf(r1), lv2 = levelOf(r2);
-      return [
-        i + 1, s.nodeCode || "", s.guideword || "", s.deviation || "", s.hazard || "",
+      const row = [i + 1, s.nodeCode || ""];
+      if (isHazop) row.push(s.parameter || "");
+      row.push(s.guideword || "", s.deviation || "", s.hazard || "",
         s.causes || "", s.consequences || "", s.safeguards || "",
         r1 ? r1 + "\n" + (lv1 || "") : "—",
         s.recommendation || "—",
         r2 ? r2 + "\n" + (lv2 || "") : "—",
-        s.status || "",
-      ];
+        s.status || "");
+      return row;
     });
+    const wsHead = ["No", "Node"].concat(isHazop ? ["Parameter"] : [])
+      .concat(["Guideword", "Penyimpangan", "Deskripsi Bahaya", "Penyebab", "Konsekuensi", "Safeguard", "Awal", "Rekomendasi", "Sisa", "Status"]);
+    const cs = {};
+    let ci = 0;
+    cs[ci++] = { cellWidth: 18, halign: "center" }; // No
+    cs[ci++] = { cellWidth: 32 };                   // Node
+    if (isHazop) cs[ci++] = { cellWidth: 46 };      // Parameter
+    cs[ci++] = { cellWidth: 46 };                   // Guideword
+    cs[ci++] = { cellWidth: 54 };                   // Penyimpangan
+    cs[awalIdx] = { cellWidth: 36, halign: "center", fontStyle: "bold" };
+    cs[sisaIdx] = { cellWidth: 36, halign: "center", fontStyle: "bold" };
+    cs[statusIdx] = { cellWidth: 42 };
     autoTable(doc, Object.assign({}, tableOpts, {
       startY: 82,
-      head: [["No", "Node", "Guideword", "Penyimpangan", "Deskripsi Bahaya", "Penyebab", "Konsekuensi", "Safeguard", "Awal", "Rekomendasi", "Sisa", "Status"]],
+      head: [wsHead],
       body: wsBody,
-      columnStyles: {
-        0: { cellWidth: 18, halign: "center" },
-        1: { cellWidth: 34 },
-        2: { cellWidth: 52 },
-        3: { cellWidth: 60 },
-        8: { cellWidth: 38, halign: "center", fontStyle: "bold" },
-        10: { cellWidth: 38, halign: "center", fontStyle: "bold" },
-        11: { cellWidth: 46 },
-      },
+      columnStyles: cs,
       didParseCell: function (d) {
-        if (d.section === "body" && (d.column.index === 8 || d.column.index === 10)) {
+        if (d.section === "body" && (d.column.index === awalIdx || d.column.index === sisaIdx)) {
           const s = scenarios[d.row.index];
-          const lvl = d.column.index === 8 ? levelOf(rpnOf(s.L1, s.C1)) : levelOf(rpnOf(s.L2, s.C2));
+          const lvl = d.column.index === awalIdx ? levelOf(rpnOf(s.L1, s.C1)) : levelOf(rpnOf(s.L2, s.C2));
           if (lvl) { const c = _lvlRGB(lvl); d.cell.styles.fillColor = c.bg; d.cell.styles.textColor = c.fg; }
         }
       },
@@ -2686,7 +2809,7 @@ async function exportPdf(project) {
   }
 
   const safe = (info.title || "HAZID").replace(/[^a-z0-9]+/gi, "_").slice(0, 40);
-  doc.save("Laporan_HAZID_" + safe + ".pdf");
+  doc.save("Laporan_" + studyLabel(studyType) + "_" + safe + ".pdf");
 }
 
 /* ============================================================================
@@ -2696,7 +2819,7 @@ function blankProject(owner) {
   return {
     id: uid("prj"), owner: owner, createdAt: nowISO(), updatedAt: nowISO(),
     info: { title: "", number: "", facility: "", location: "", client: "",
-      consultant: "PT. Nusa Rendra Jayatama (Nusa Safety)", studyDate: "", leader: "", rev: "0", team: [] },
+      consultant: "PT. Nusa Rendra Jayatama (Nusa Safety)", studyDate: "", leader: "", rev: "0", studyType: "HAZID", team: [] },
     nodes: [], scenarios: [],
   };
 }

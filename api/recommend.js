@@ -45,26 +45,35 @@ export default async function handler(req, res) {
 
   try {
     const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : (req.body || {});
+    const studyType = String(body.studyType || "HAZID").toUpperCase() === "HAZOP" ? "HAZOP" : "HAZID";
+    const isHazop = studyType === "HAZOP";
     const guideword = String(body.guideword || "").trim();
+    const parameter = String(body.parameter || "").trim();
     const deviation = String(body.deviation || "").trim();
     const nodeName = String(body.node || "").trim();
     const facility = String(body.facility || "").trim();
     const existingHazard = String(body.hazard || "").trim();
-    if (!guideword && !deviation) {
-      return res.status(400).json({ error: "Isi guideword dan/atau penyimpangan terlebih dahulu." });
+    if (!guideword && !deviation && !parameter) {
+      return res.status(400).json({ error: "Isi guideword/parameter dan/atau penyimpangan terlebih dahulu." });
     }
 
+    const intro = isHazop
+      ? `Anda adalah fasilitator senior HAZOP & process safety (mengacu CCPS & IEC 61882). Lengkapi SATU baris kajian HAZOP untuk sebuah node proses. Fokus pada penyimpangan PARAMETER PROSES (Guideword diterapkan pada parameter) serta dampak keselamatan & operability.`
+      : `Anda adalah fasilitator senior HAZID & process safety (mengacu CCPS). Lengkapi SATU skenario bahaya untuk lembar kerja HAZID. Fokus pada identifikasi bahaya tingkat tinggi termasuk bahaya eksternal.`;
+
     const prompt =
-`Anda adalah fasilitator senior HAZID & process safety (mengacu CCPS). Lengkapi SATU skenario bahaya untuk lembar kerja HAZID.
+`${intro}
 
 KONTEKS:
+- Jenis studi: ${studyType}
 - Fasilitas/industri: ${facility || "(umum)"}
 - Node/sistem yang dikaji: ${nodeName || "(tidak disebutkan)"}
+${isHazop ? "- Parameter proses: " + (parameter || "(tidak disebutkan)") : ""}
 - Guideword / kata panduan: ${guideword || "(tidak ada)"}
-- Penyimpangan / deviation: ${deviation || "(tidak ada)"}
+- Penyimpangan / deviation: ${deviation || (isHazop && guideword && parameter ? (guideword + " " + parameter) : "(tidak ada)")}
 ${existingHazard ? "- Catatan bahaya awal dari pengguna: " + existingHazard : ""}
 
-TUGAS: Susun deskripsi bahaya, penyebab, konsekuensi (pertimbangkan dimensi K3, lingkungan, keamanan/security, dan teknis), pengaman eksisting yang lazim, serta rekomendasi tindakan. Lalu beri saran nilai Kemungkinan (L) dan Konsekuensi (C) awal sesuai rubrik.
+TUGAS: Susun deskripsi bahaya, penyebab, konsekuensi (pertimbangkan dimensi K3, lingkungan, keamanan/security, dan teknis${isHazop ? "; sertakan dampak operability bila relevan" : ""}), pengaman eksisting yang lazim, serta rekomendasi tindakan. Lalu beri saran nilai Kemungkinan (L) dan Konsekuensi (C) awal sesuai rubrik.
 
 ${RUBRIK}
 
