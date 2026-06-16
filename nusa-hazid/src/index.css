@@ -28,13 +28,8 @@ input:focus, select:focus, textarea:focus {
 
 /* Print rules for the in-app report (Tab "Laporan Akhir") */
 @media print {
-  /* Critical: keep all background colours, gradients & badge fills when printing */
-  * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
   .no-print { display: none !important; }
-  body { background: #fff !important; }
-  .report-area { box-shadow: none !important; border: none !important; border-radius: 0 !important; margin: 0 !important; }
-  /* Sensible pagination: repeat table headers, never split a row or image */
-  thead { display: table-header-group; }
-  tr, img { break-inside: avoid; }
-  @page { margin: 12mm; }
+  .report-area { box-shadow: none !important; border: none !important; }
+  body { background: #fff; }
+  @page { margin: 14mm; }
 }

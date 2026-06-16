@@ -254,119 +254,6 @@ async function saveJSON(key, obj) { await store.set(key, JSON.stringify(obj)); }
 const K_USERS = "hazid_users";
 const K_PROJECTS = "hazid_projects";
 const K_SESSION = "hazid_session";
-const K_PCACHE = "hazid_pcache";
-
-/* ============================================================================
-   SINKRONISASI MULTI-PENGGUNA (anti-bentrok, per-item)
-   Proyek disimpan granular di server: cangkang (meta+urutan), skenario & node
-   sebagai HASH per-item, plus indeks ringan (pidx) & penghitung versi (gv).
-============================================================================ */
-const PIDX = "pidx", GVK = "gv";
-function _pm(v) { if (v == null) return null; if (typeof v === "string") { try { return JSON.parse(v); } catch (e) { return v; } } return v; }
-async function _kv(payload) {
-  const r = await fetch(API_BASE, {
-    method: "POST",
-    headers: Object.assign({ "Content-Type": "application/json" }, API_TOKEN ? { "x-api-token": API_TOKEN } : {}),
-    body: JSON.stringify(payload),
-  });
-  if (!r.ok) throw new Error("kv " + payload.op + " -> " + r.status);
-  return r.json();
-}
-async function rGet(key) { const j = await _kv({ op: "get", key: key }); return _pm(j.value); }
-async function rSet(key, value) { await _kv({ op: "set", key: key, value: value }); }
-async function rDel(key) { await _kv({ op: "del", key: key }); }
-async function rMDel(keys) { await _kv({ op: "mdel", keys: keys }); }
-async function rIncr(key) { const j = await _kv({ op: "incr", key: key }); return j.value; }
-async function rHSet(key, field, value) { await _kv({ op: "hset", key: key, field: field, value: value }); }
-async function rHDel(key, field) { await _kv({ op: "hdel", key: key, field: field }); }
-async function rHGetAll(key) {
-  const j = await _kv({ op: "hgetall", key: key });
-  const o = j.value || {}; const out = {};
-  Object.keys(o).forEach(function (k) { out[k] = _pm(o[k]); });
-  return out;
-}
-
-function _mk(id) { return "p:" + id + ":m"; }
-function _sk(id) { return "p:" + id + ":s"; }
-function _nk(id) { return "p:" + id + ":n"; }
-function _shellOf(p) {
-  const shell = {};
-  Object.keys(p).forEach(function (k) { if (k !== "scenarios" && k !== "nodes") shell[k] = p[k]; });
-  shell._scnOrder = (p.scenarios || []).map(function (s) { return s.id; });
-  shell._ndOrder = (p.nodes || []).map(function (n) { return n.id; });
-  return shell;
-}
-function _assemble(shell, scnMap, ndMap) {
-  function ordered(map, order) {
-    const seen = {}, out = [];
-    (order || []).forEach(function (id) { if (map[id]) { out.push(map[id]); seen[id] = 1; } });
-    Object.keys(map).forEach(function (id) { if (!seen[id]) out.push(map[id]); });
-    return out;
-  }
-  const clean = {};
-  Object.keys(shell).forEach(function (k) { if (k !== "_scnOrder" && k !== "_ndOrder") clean[k] = shell[k]; });
-  clean.scenarios = ordered(scnMap, shell._scnOrder);
-  clean.nodes = ordered(ndMap, shell._ndOrder);
-  return clean;
-}
-
-async function remoteGetGv() { const v = await rGet(GVK); return v == null ? 0 : (typeof v === "number" ? v : (parseInt(v, 10) || 0)); }
-async function remoteLoadIndex() { return rHGetAll(PIDX); }
-async function remoteLoadProject(id) {
-  const shell = await rGet(_mk(id));
-  if (shell == null) return null;
-  const scn = await rHGetAll(_sk(id));
-  const nd = await rHGetAll(_nk(id));
-  return _assemble(shell, scn, nd);
-}
-async function remoteSaveFull(p) {
-  await rSet(_mk(p.id), _shellOf(p));
-  const scns = p.scenarios || []; for (let i = 0; i < scns.length; i++) await rHSet(_sk(p.id), scns[i].id, scns[i]);
-  const nds = p.nodes || []; for (let i = 0; i < nds.length; i++) await rHSet(_nk(p.id), nds[i].id, nds[i]);
-  await rHSet(PIDX, p.id, p.updatedAt || nowISO());
-  await rIncr(GVK);
-}
-async function remoteDelProject(id) {
-  await rMDel([_mk(id), _sk(id), _nk(id)]);
-  await rHDel(PIDX, id);
-  await rIncr(GVK);
-}
-async function remoteSaveDiff(before, after) {
-  const bScn = {}; ((before && before.scenarios) || []).forEach(function (s) { bScn[s.id] = s; });
-  const aScn = {}; (after.scenarios || []).forEach(function (s) { aScn[s.id] = s; });
-  for (const id in aScn) { if (!bScn[id] || JSON.stringify(bScn[id]) !== JSON.stringify(aScn[id])) await rHSet(_sk(after.id), id, aScn[id]); }
-  for (const id in bScn) { if (!aScn[id]) await rHDel(_sk(after.id), id); }
-  const bNd = {}; ((before && before.nodes) || []).forEach(function (n) { bNd[n.id] = n; });
-  const aNd = {}; (after.nodes || []).forEach(function (n) { aNd[n.id] = n; });
-  for (const id in aNd) { if (!bNd[id] || JSON.stringify(bNd[id]) !== JSON.stringify(aNd[id])) await rHSet(_nk(after.id), id, aNd[id]); }
-  for (const id in bNd) { if (!aNd[id]) await rHDel(_nk(after.id), id); }
-  const bShell = before ? _shellOf(before) : null;
-  const aShell = _shellOf(after);
-  if (!bShell || JSON.stringify(bShell) !== JSON.stringify(aShell)) await rSet(_mk(after.id), aShell);
-  await rHSet(PIDX, after.id, after.updatedAt || nowISO());
-  await rIncr(GVK);
-}
-
-function cacheProjects(arr) { try { _lsSet(K_PCACHE, JSON.stringify(arr)); } catch (e) { /* noop */ } }
-function loadCachedProjects() { try { const c = _lsGet(K_PCACHE); return c ? JSON.parse(c) : null; } catch (e) { return null; } }
-async function migrateLegacyIfNeeded() {
-  const idx = await remoteLoadIndex();
-  if (idx && Object.keys(idx).length) return;
-  let old = null;
-  try { const v = await _apiGet(K_PROJECTS); old = v ? JSON.parse(v) : null; } catch (e) { old = null; }
-  if (!Array.isArray(old) || !old.length) old = loadCachedProjects();
-  if (Array.isArray(old) && old.length) {
-    for (let i = 0; i < old.length; i++) { try { await remoteSaveFull(old[i]); } catch (e) { /* skip */ } }
-  }
-}
-async function syncLoadAllProjects() {
-  await migrateLegacyIfNeeded();
-  const idx = await remoteLoadIndex();
-  const ids = Object.keys(idx || {});
-  const out = [];
-  for (let i = 0; i < ids.length; i++) { const p = await remoteLoadProject(ids[i]); if (p) out.push(p); }
-  return out;
-}
 
 /* ---------- AI helper — rekomendasi skenario via /api/recommend ---------- */
 async function aiRecommendScenario(payload) {
@@ -2017,7 +1904,7 @@ function ReportTab(props) {
 
   return (
     <div className="space-y-5">
-      <style>{"@media print{ *{-webkit-print-color-adjust:exact !important; print-color-adjust:exact !important;} .no-print{display:none !important;} body{background:#fff !important;} .report-area{box-shadow:none !important; border:none !important; border-radius:0 !important; margin:0 !important;} thead{display:table-header-group;} tr,img{break-inside:avoid;} @page{margin:12mm;} }"}</style>
+      <style>{"@media print{ .no-print{display:none !important;} .report-area{box-shadow:none !important; border:none !important;} body{background:#fff;} @page{margin:14mm;} }"}</style>
 
       {/* Print/sort controls */}
       <div className="no-print flex items-center justify-between gap-3 flex-wrap">
@@ -3264,21 +3151,7 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [activeId, setActiveId] = useState(null);
   const [adminView, setAdminView] = useState("dashboard"); // for admin shell nav
-  const [syncAt, setSyncAt] = useState(0); // penanda sinkronisasi terakhir (UI halus)
   const { showToast, ToastNode } = useToast();
-
-  // refs untuk sinkronisasi latar belakang
-  const projectsRef = useRef([]);
-  const activeIdRef = useRef(null);
-  const gvRef = useRef(0);
-  const localWriteRef = useRef({});   // id -> ts: lindungi editan lokal yg belum terserap server
-  const justCreatedRef = useRef({});  // id -> ts: jangan buang proyek baru sebelum terindeks
-  useEffect(function () { projectsRef.current = projects; }, [projects]);
-  useEffect(function () { activeIdRef.current = activeId; }, [activeId]);
-  function markLocalWrite(id) { localWriteRef.current[id] = Date.now(); }
-  function isLocalWriteRecent(id) { return (Date.now() - (localWriteRef.current[id] || 0)) < 4000; }
-  function markCreated(id) { justCreatedRef.current[id] = Date.now(); }
-  function isJustCreated(id) { return (Date.now() - (justCreatedRef.current[id] || 0)) < 8000; }
 
   // boot
   useEffect(function () {
@@ -3291,15 +3164,10 @@ export default function App() {
         ];
         await saveJSON(K_USERS, us);
       }
-      let ps = null;
-      try { ps = await syncLoadAllProjects(); } catch (e) { ps = null; }
-      if (ps == null) ps = loadCachedProjects();
-      if (ps == null) ps = await loadJSON(K_PROJECTS, []);
-      try { gvRef.current = await remoteGetGv(); } catch (e) { /* noop */ }
+      const ps = await loadJSON(K_PROJECTS, []);
       const sess = await store.get(K_SESSION);
       setUsers(us);
       setProjects(Array.isArray(ps) ? ps : []);
-      if (Array.isArray(ps)) cacheProjects(ps);
       if (sess) {
         const found = us.find(function (x) { return x.username === sess; });
         if (found) setUser(found);
@@ -3309,46 +3177,33 @@ export default function App() {
   }, []);
 
   const persistUsers = useCallback(function (next) { setUsers(next); saveJSON(K_USERS, next); }, []);
+  const persistProjects = useCallback(function (next) { setProjects(next); saveJSON(K_PROJECTS, next); }, []);
 
   function login(u) { setUser(u); store.set(K_SESSION, u.username); }
   function logout() { setUser(null); setActiveId(null); setAdminView("dashboard"); store.set(K_SESSION, ""); }
 
-  // project ops (sinkron granular per-item)
-  function createProject(p) {
-    const next = projects.concat([p]);
-    setProjects(next); cacheProjects(next);
-    markCreated(p.id); markLocalWrite(p.id);
-    remoteSaveFull(p).catch(function () { /* offline: tetap di cache lokal */ });
-  }
+  // project ops
+  function createProject(p) { persistProjects(projects.concat([p])); }
   function deleteProject(id) {
-    const next = projects.filter(function (p) { return p.id !== id; });
-    setProjects(next); cacheProjects(next);
-    remoteDelProject(id).catch(function () { /* noop */ });
+    persistProjects(projects.filter(function (p) { return p.id !== id; }));
     if (activeId === id) setActiveId(null);
     showToast("Proyek dihapus");
   }
   const updateProject = useCallback(function (updater) {
     setProjects(function (prev) {
-      let before = null, after = null;
       const next = prev.map(function (p) {
         if (p.id !== activeId) return p;
-        before = p;
         const copy = JSON.parse(JSON.stringify(p));
         updater(copy);
         copy.updatedAt = nowISO();
-        after = copy;
         return copy;
       });
-      if (after) {
-        cacheProjects(next);
-        markLocalWrite(after.id);
-        remoteSaveDiff(before, after).catch(function () { /* offline */ });
-      }
+      saveJSON(K_PROJECTS, next);
       return next;
     });
   }, [activeId]);
 
-  // user ops (admin) — tetap memakai penyimpanan lama (konkurensi rendah)
+  // user ops (admin)
   function saveUser(u) {
     const clean = { username: u.username.trim(), password: u.password, name: u.name, role: u.role, createdAt: u.createdAt || nowISO() };
     const exists = users.find(function (x) { return x.username === clean.username; });
@@ -3366,58 +3221,10 @@ export default function App() {
   // example loader (PLTB)
   function loadExample() {
     const p = buildPltbExample(user.username);
-    const next = projects.concat([p]);
-    setProjects(next); cacheProjects(next);
-    markCreated(p.id); markLocalWrite(p.id);
-    remoteSaveFull(p).catch(function () { /* noop */ });
+    persistProjects(projects.concat([p]));
     showToast("Contoh PLTB dimuat");
     setActiveId(p.id);
   }
-
-  // ── Sinkronisasi otomatis tiap ~2,5 detik (anti-bentrok, tanpa refresh) ──
-  useEffect(function () {
-    if (!user) return;
-    let stop = false, timer = null;
-    function schedule() { if (!stop) timer = setTimeout(tick, 2500); }
-    async function tick() {
-      try {
-        const gv = await remoteGetGv();
-        if (!stop && gv !== gvRef.current) {
-          gvRef.current = gv;
-          const idx = await remoteLoadIndex();
-          const prev = projectsRef.current;
-          const prevById = {}; prev.forEach(function (p) { prevById[p.id] = p; });
-          const toLoad = [];
-          Object.keys(idx).forEach(function (id) {
-            const local = prevById[id];
-            const same = local && String(local.updatedAt || "") === String(idx[id]);
-            if (same) return;
-            if (local && id === activeIdRef.current && isLocalWriteRecent(id)) return; // lindungi editan lokal yg sedang berjalan
-            toLoad.push(id);
-          });
-          const removed = Object.keys(prevById).filter(function (id) { return !(id in idx) && !isJustCreated(id); });
-          if (!stop && (toLoad.length || removed.length)) {
-            const loaded = {};
-            for (let i = 0; i < toLoad.length; i++) { const p = await remoteLoadProject(toLoad[i]); if (p) loaded[p.id] = p; }
-            if (!stop) {
-              setProjects(function (cur) {
-                let next = cur.map(function (p) { return loaded[p.id] ? loaded[p.id] : p; });
-                Object.keys(loaded).forEach(function (id) { if (!next.find(function (p) { return p.id === id; })) next = next.concat([loaded[id]]); });
-                if (removed.length) next = next.filter(function (p) { return removed.indexOf(p.id) === -1; });
-                cacheProjects(next);
-                return next;
-              });
-              if (removed.indexOf(activeIdRef.current) !== -1) setActiveId(null);
-              setSyncAt(Date.now());
-            }
-          }
-        }
-      } catch (e) { /* abaikan error polling sesaat */ }
-      schedule();
-    }
-    timer = setTimeout(tick, 2500);
-    return function () { stop = true; if (timer) clearTimeout(timer); };
-  }, [user]);
 
   if (!ready) {
     return (
