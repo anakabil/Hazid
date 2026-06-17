@@ -21,7 +21,7 @@ const NS = "nusa-hazid:";
 const APP_TOKEN = process.env.APP_API_TOKEN || "";
 
 function keyAllowed(k) {
-  if (k === "hazid_users" || k === "hazid_projects" || k === "pidx" || k === "gv") return true;
+  if (k === "hazid_users" || k === "hazid_projects" || k === "pidx" || k === "gv" || k === "pmig") return true;
   return /^p:[A-Za-z0-9_-]{1,80}:[msn]$/.test(k);
 }
 

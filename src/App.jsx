@@ -349,23 +349,46 @@ async function remoteSaveDiff(before, after) {
 
 function cacheProjects(arr) { try { _lsSet(K_PCACHE, JSON.stringify(arr)); } catch (e) { /* noop */ } }
 function loadCachedProjects() { try { const c = _lsGet(K_PCACHE); return c ? JSON.parse(c) : null; } catch (e) { return null; } }
-async function migrateLegacyIfNeeded() {
-  const idx = await remoteLoadIndex();
-  if (idx && Object.keys(idx).length) return;
-  let old = null;
-  try { const v = await _apiGet(K_PROJECTS); old = v ? JSON.parse(v) : null; } catch (e) { old = null; }
-  if (!Array.isArray(old) || !old.length) old = loadCachedProjects();
-  if (Array.isArray(old) && old.length) {
-    for (let i = 0; i < old.length; i++) { try { await remoteSaveFull(old[i]); } catch (e) { /* skip */ } }
-  }
+
+const PMIG = "pmig"; // penanda global: migrasi blob lama -> format per-item sudah tuntas
+
+// Baca blob lama secara kokoh (nilai bisa berupa string JSON ATAU array yang sudah ter-parse).
+async function loadLegacyProjects() {
+  let v = null;
+  try { v = await _apiGet(K_PROJECTS); } catch (e) { v = null; }
+  if (v == null) return [];
+  if (Array.isArray(v)) return v;
+  if (typeof v === "object") return [];
+  try { const a = JSON.parse(v); return Array.isArray(a) ? a : []; } catch (e) { return []; }
 }
+
+// Muat semua proyek + PEMULIHAN: format baru jadi sumber utama; blob lama mengisi yang hilang.
+// Layar tak akan kosong selama blob lama berisi data. Migrasi bersifat idempoten.
 async function syncLoadAllProjects() {
-  await migrateLegacyIfNeeded();
-  const idx = await remoteLoadIndex();
+  let idx = {};
+  try { idx = await remoteLoadIndex(); } catch (e) { idx = {}; }
   const ids = Object.keys(idx || {});
-  const out = [];
-  for (let i = 0; i < ids.length; i++) { const p = await remoteLoadProject(ids[i]); if (p) out.push(p); }
-  return out;
+  const byId = {};
+  for (let i = 0; i < ids.length; i++) { const p = await remoteLoadProject(ids[i]); if (p && p.info && typeof p.info === "object") byId[p.id] = p; }
+
+  let migDone = false;
+  try { migDone = !!(await rGet(PMIG)); } catch (e) { migDone = false; }
+
+  if (!migDone) {
+    const legacy = await loadLegacyProjects();
+    let okAll = true;
+    for (let i = 0; i < legacy.length; i++) {
+      const lp = legacy[i];
+      if (!lp || !lp.id) continue;
+      if (!byId[lp.id]) {
+        byId[lp.id] = lp;                                 // TAMPILKAN apa pun (pemulihan)
+        try { await remoteSaveFull(lp); } catch (e) { okAll = false; } // migrasikan ke format baru
+      }
+    }
+    if (okAll) { try { await rSet(PMIG, 1); } catch (e) { /* noop */ } } // tandai tuntas hanya bila semua sukses
+  }
+
+  return Object.keys(byId).map(function (k) { return byId[k]; });
 }
 
 /* ---------- AI helper — rekomendasi skenario via /api/recommend ---------- */
@@ -675,6 +698,169 @@ function Modal(props) {
 /* ============================================================================
    LOGIN
 ============================================================================ */
+/* ============================================================================
+   LOGIN — bagian "Apa itu HazardStudy.app?" (etalase produk, muncul saat scroll)
+============================================================================ */
+function Reveal(props) {
+  const ref = useRef(null);
+  const [shown, setShown] = useState(false);
+  useEffect(function () {
+    const el = ref.current;
+    if (!el) return;
+    if (typeof window !== "undefined" && window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) { setShown(true); return; }
+    const io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) { if (e.isIntersecting) { setShown(true); io.unobserve(e.target); } });
+    }, { threshold: 0.12, rootMargin: "0px 0px -40px 0px" });
+    io.observe(el);
+    return function () { io.disconnect(); };
+  }, []);
+  return (
+    <div ref={ref} style={{
+      opacity: shown ? 1 : 0,
+      transform: shown ? "none" : "translateY(26px)",
+      transition: "opacity .7s cubic-bezier(.16,1,.3,1), transform .7s cubic-bezier(.16,1,.3,1)",
+    }}>{props.children}</div>
+  );
+}
+
+function ScreenFrame(props) {
+  return (
+    <div style={{ borderRadius: 16, overflow: "hidden", border: "1px solid " + C.border, background: "#fff", boxShadow: "0 20px 55px rgba(8,40,28,0.14)" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 13px", background: C.faint, borderBottom: "1px solid " + C.border }}>
+        <span style={{ width: 9, height: 9, borderRadius: 9, background: "#E2756B" }} />
+        <span style={{ width: 9, height: 9, borderRadius: 9, background: "#E7B95E" }} />
+        <span style={{ width: 9, height: 9, borderRadius: 9, background: "#74BE86" }} />
+        <span style={{ marginLeft: 8, fontSize: 10.5, color: C.sub, fontWeight: 600, letterSpacing: 0.2 }}>HazardStudy.app</span>
+      </div>
+      <img src={props.src} alt={props.alt} loading="lazy" width={props.w} height={props.h}
+           style={{ display: "block", width: "100%", height: "auto" }} />
+    </div>
+  );
+}
+
+function ExportGraphic() {
+  const fileCard = function (icon, label, sub, bg) {
+    return (
+      <div style={{ background: "#fff", border: "1px solid " + C.border, borderRadius: 14, padding: "18px 22px", minWidth: 134, textAlign: "center", boxShadow: "0 8px 22px rgba(8,40,28,0.08)" }}>
+        <div style={{ width: 46, height: 46, borderRadius: 12, background: bg, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 10px" }}>{icon}</div>
+        <div style={{ fontSize: 15, fontWeight: 700, color: C.ink }}>{label}</div>
+        <div style={{ fontSize: 11.5, color: C.sub, marginTop: 1 }}>{sub}</div>
+      </div>
+    );
+  };
+  return (
+    <div style={{ borderRadius: 16, border: "1px solid " + C.border, background: "linear-gradient(135deg,#F4FAF6 0%,#E6F2EB 100%)", boxShadow: "0 20px 55px rgba(8,40,28,0.10)", padding: "40px 22px" }}>
+      <div style={{ display: "flex", gap: 18, justifyContent: "center", flexWrap: "wrap" }}>
+        {fileCard(<FileText size={24} color="#C0392B" />, "PDF", "Laporan cetak", "#FBEAE8")}
+        {fileCard(<FileSpreadsheet size={24} color="#1A9E5A" />, "Excel", "Data mentah", "#E4F5EB")}
+      </div>
+      <div style={{ textAlign: "center", marginTop: 20 }}>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 7, background: C.navy, color: "#fff", fontSize: 12.5, fontWeight: 600, padding: "8px 16px", borderRadius: 999 }}>
+          <Download size={15} /> Unduh sekali klik
+        </span>
+      </div>
+    </div>
+  );
+}
+
+const ABOUT_FEATURES = [
+  { n: "01", tag: "FONDASI", icon: Target, title: "Mulai dari fondasi yang tepat",
+    body: "Setiap kajian diawali dengan memilih baseline penilaian: pendekatan Sistem, Lingkup Kajian, Aktivitas, atau Parameter Proses. Anda yang menentukan sudut pandang paling pas — guideword dan struktur kerjanya menyesuaikan otomatis.",
+    img: "/feature-1.png", w: 1210, h: 798, alt: "Pemilihan jenis studi dan baseline penilaian risiko" },
+  { n: "02", tag: "STANDAR", icon: Shield, title: "Kriteria & matriks risiko, sudah tertata",
+    body: "Kriteria likelihood, konsekuensi, matriks risiko, hingga tingkat toleransi risikonya sudah ditetapkan mengacu pada standar terpercaya. Tidak perlu menyusun dari nol — konsisten dan kredibel di setiap studi.",
+    img: "/feature-2.png", w: 1202, h: 759, alt: "Tabel kriteria likelihood dan konsekuensi berbasis standar" },
+  { n: "03", tag: "RUANG LINGKUP", icon: ClipboardList, title: "Tetapkan batasan studi dengan jelas",
+    body: "Definisikan batas setiap lingkup — apa yang termasuk dan apa yang dikecualikan. Jenis lingkupnya mengikuti metode yang Anda pilih di awal, jadi kajian tetap rapi, fokus, dan tidak ambigu.",
+    img: "/feature-3.png", w: 938, h: 532, alt: "Form penetapan batasan lingkup aktivitas" },
+  { n: "04", tag: "DIBANTU AI", icon: Sparkles, title: "Susun skenario bahaya, dipercepat AI", highlight: "Hemat waktu analisis hingga 90%",
+    body: "Bangun skenario dengan panduan guideword agar identifikasi bahaya lebih akurat. Cukup isi bahaya intinya, lalu AI melengkapi penyebab, konsekuensi, pengaman, sampai skor risikonya — memangkas waktu analisis secara drastis.",
+    img: "/feature-4.png", w: 948, h: 693, alt: "Editor skenario bahaya dengan guideword dan bantuan AI" },
+  { n: "05", tag: "TINDAK LANJUT", icon: ListChecks, title: "Jangan biarkan rekomendasi cuma jadi rencana",
+    body: "Pantau status setiap rekomendasi pengendalian (CAPA) di satu tempat. Saring berdasarkan status atau prioritas, sehingga tidak ada tindakan yang terlewat — sampai benar-benar tuntas.",
+    img: "/feature-5.png", w: 1199, h: 840, alt: "Dasbor pemantauan status tindakan dan distribusi risiko" },
+  { n: "06", tag: "WAWASAN", icon: BarChart3, title: "Data masif jadi rekap yang enak dibaca",
+    body: "Lelah dengan data yang menumpuk? Semua input otomatis terangkum menjadi profil risiko dan ringkasan yang rapi serta menarik — terbaca dalam sekali lihat, tanpa repot mengolah manual.",
+    img: "/feature-6.png", w: 1183, h: 932, alt: "Laporan dengan ringkasan eksekutif dan profil risiko" },
+  { n: "07", tag: "LAPORAN", icon: FileText, title: "Laporan siap saji untuk direksi",
+    body: "Perlu melapor ke direksi? AI sudah merangkum hasil kajian secara otomatis. Tinggal cetak dan sajikan — ringkasan eksekutif, profil risiko, dan register temuan, semua dalam satu laporan profesional.",
+    img: "/feature-7.png", w: 1117, h: 784, alt: "Lembar kerja dan laporan akhir HAZID siap cetak" },
+  { n: "08", tag: "EKSPOR", icon: Download, title: "Butuh berkas untuk audit? Satset!",
+    body: "Ekspor seluruh kajian ke PDF atau Excel kapan saja — siap untuk kebutuhan audit, dokumentasi, maupun arsip. Tanpa ribet, tinggal unduh.",
+    isExport: true, alt: "Ekspor laporan ke PDF dan Excel" },
+];
+
+function AboutSection(props) {
+  return (
+    <section id="about" style={{ background: "linear-gradient(180deg,#FFFFFF 0%,#F2F8F4 58%,#EAF3ED 100%)" }}>
+      <div className="mx-auto px-5 sm:px-8" style={{ maxWidth: 1120, paddingTop: 80, paddingBottom: 76 }}>
+        <Reveal>
+          <div style={{ textAlign: "center", maxWidth: 720, margin: "0 auto" }}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 7, background: C.mint, color: C.deepNavy, fontSize: 11.5, fontWeight: 700, letterSpacing: 0.8, padding: "6px 13px", borderRadius: 999, textTransform: "uppercase" }}>
+              <Sparkles size={13} /> Mengenal Platform
+            </span>
+            <h2 className="font-bold" style={{ fontSize: 34, lineHeight: 1.15, letterSpacing: -0.6, color: C.ink, marginTop: 18 }}>
+              Apa itu HazardStudy.app?
+            </h2>
+            <p style={{ fontSize: 16, lineHeight: 1.7, color: C.sub, marginTop: 14 }}>
+              Satu tempat untuk seluruh penilaian risiko Anda — dari menetapkan ruang lingkup, menyusun skenario bahaya bersama AI, memantau tindakan, hingga mencetak laporan siap-direksi. Terstruktur, cepat, dan mengacu pada standar yang terpercaya.
+            </p>
+          </div>
+        </Reveal>
+
+        <div style={{ marginTop: 60, display: "flex", flexDirection: "column", gap: 54 }}>
+          {ABOUT_FEATURES.map(function (f, i) {
+            const reversed = i % 2 === 1;
+            const Icon = f.icon;
+            const visual = f.isExport ? <ExportGraphic /> : <ScreenFrame src={f.img} alt={f.alt} w={f.w} h={f.h} />;
+            return (
+              <Reveal key={f.n}>
+                <div className="grid md:grid-cols-2 items-center" style={{ gap: 40 }}>
+                  <div className={reversed ? "md:order-2" : ""}>{visual}</div>
+                  <div className={reversed ? "md:order-1" : ""}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+                      <span style={{ width: 38, height: 38, borderRadius: 11, background: C.mint, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                        <Icon size={19} color={C.navy} />
+                      </span>
+                      <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: 1, color: C.accent }}>{f.n} · {f.tag}</span>
+                    </div>
+                    <h3 className="font-bold" style={{ fontSize: 23, lineHeight: 1.25, letterSpacing: -0.3, color: C.ink, marginBottom: 10 }}>{f.title}</h3>
+                    <p style={{ fontSize: 15, lineHeight: 1.75, color: C.sub }}>{f.body}</p>
+                    {f.highlight ? (
+                      <div style={{ marginTop: 16, display: "inline-flex", alignItems: "center", gap: 8, background: GRAD.brand, color: "#fff", fontWeight: 700, fontSize: 13, padding: "9px 16px", borderRadius: 999, boxShadow: "0 8px 20px rgba(14,122,82,0.28)" }}>
+                        <Sparkles size={15} /> {f.highlight}
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              </Reveal>
+            );
+          })}
+        </div>
+
+        <Reveal>
+          <div style={{ marginTop: 70, borderRadius: 22, padding: "44px 32px", textAlign: "center", background: "radial-gradient(130% 130% at 0% 0%, #15976A 0%, #0E7A52 45%, #0A4A33 100%)", boxShadow: "0 24px 60px rgba(8,40,28,0.28)" }}>
+            <img src="/logo-full-white.png" alt="HazardStudy App" style={{ height: 38, width: "auto", margin: "0 auto 18px", opacity: 0.97 }} />
+            <h3 className="font-bold" style={{ fontSize: 25, lineHeight: 1.2, letterSpacing: -0.4, color: "#fff" }}>Siap memulai kajian pertama Anda?</h3>
+            <p style={{ fontSize: 14.5, color: "#CDE7DA", marginTop: 10, maxWidth: 470, marginLeft: "auto", marginRight: "auto", lineHeight: 1.6 }}>
+              Masuk dan rasakan penilaian risiko yang lebih cepat, rapi, dan kredibel — dari ruang lingkup hingga laporan direksi.
+            </p>
+            <button onClick={props.onTop}
+                    style={{ marginTop: 22, display: "inline-flex", alignItems: "center", gap: 8, background: "#fff", color: C.deepNavy, fontWeight: 700, fontSize: 14.5, padding: "12px 26px", borderRadius: 999, border: "none", cursor: "pointer" }}>
+              <KeyRound size={16} /> Masuk Sekarang
+            </button>
+          </div>
+        </Reveal>
+
+        <div style={{ marginTop: 42, textAlign: "center", fontSize: 12, color: C.sub }}>
+          <div style={{ fontWeight: 600 }}>PT. Nusa Rendra Jayatama — Nusa Safety</div>
+          <div style={{ marginTop: 3, color: "#8AA295" }}>QHSE &amp; Fire Protection · ISO 45001 · SMK3 · © {new Date().getFullYear()}</div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function LoginScreen(props) {
   const [u, setU] = useState("");
   const [p, setP] = useState("");
@@ -689,10 +875,11 @@ function LoginScreen(props) {
   }
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center p-4"
-         style={{ background: "radial-gradient(140% 120% at 100% 0%, #15976A 0%, #0E7A52 38%, #0A4A33 100%)" }}>
-      <div className="w-full max-w-4xl grid md:grid-cols-2 rounded-3xl overflow-hidden"
-           style={{ background: C.card, boxShadow: "0 30px 80px rgba(8,40,28,0.45)" }}>
+    <div style={{ minHeight: "100dvh", background: "#EFF5F1" }}>
+      <section className="w-full flex flex-col items-center justify-center p-4 relative"
+               style={{ minHeight: "100dvh", background: "radial-gradient(140% 120% at 100% 0%, #15976A 0%, #0E7A52 38%, #0A4A33 100%)" }}>
+        <div className="w-full max-w-4xl grid md:grid-cols-2 rounded-3xl overflow-hidden"
+             style={{ background: C.card, boxShadow: "0 30px 80px rgba(8,40,28,0.45)" }}>
         {/* Left — brand panel */}
         <div className="p-9 flex flex-col justify-between text-white relative"
              style={{ background: "radial-gradient(120% 120% at 0% 0%, #15976A 0%, #0B5238 55%, #08381F 100%)" }}>
@@ -756,6 +943,17 @@ function LoginScreen(props) {
 
         </div>
       </div>
+
+        <button
+          onClick={function () { var el = document.getElementById("about"); if (el) el.scrollIntoView({ behavior: "smooth" }); }}
+          className="mt-8 flex flex-col items-center gap-1"
+          style={{ color: "#CFE7DB", cursor: "pointer", background: "transparent", border: "none" }}>
+          <span style={{ fontSize: 12.5, letterSpacing: 0.4, fontWeight: 600 }}>Apa itu HazardStudy.app?</span>
+          <ChevronDown size={22} className="motion-safe:animate-bounce" />
+        </button>
+      </section>
+
+      <AboutSection onTop={function () { window.scrollTo({ top: 0, behavior: "smooth" }); }} />
     </div>
   );
 }
