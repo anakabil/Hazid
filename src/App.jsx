@@ -4,7 +4,7 @@ import {
   Grid3x3, ListChecks, BarChart3, ChevronLeft, X, Save, AlertTriangle,
   LayoutDashboard, FolderOpen, Wind, Info, ClipboardList, CheckCircle2,
   Search, Lock, User, KeyRound, Eye, EyeOff, Copy,
-  Sparkles, Filter, ArrowUpDown, Upload, Camera, FileSpreadsheet, ChevronDown, Loader2
+  Sparkles, Filter, ArrowUpDown, Upload, Camera, FileSpreadsheet, ChevronDown, Loader2, Target
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, CartesianGrid
