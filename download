@@ -1,12 +1,258 @@
-node_modules
-dist
-dist-ssr
-*.local
-.DS_Store
-.vercel
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.env
-.env.*
-!.env.example
+/* ===========================================================================
+   Nusa Safety — Hazard Study App
+   Registry instrumen manajemen risiko: Sektor → Level Cakupan → Instrumen
+   Tulang punggung data untuk wizard pembuatan & editor schema-driven.
+=========================================================================== */
+import {
+  Factory, Zap, Mountain, HardHat, FlaskConical, Truck, Building2, Globe, Wheat, Activity,
+  Target, Compass, ShieldAlert, ListChecks, GitBranch, HelpCircle, Workflow, Users, Scale,
+  TrendingUp, Layers, ClipboardList, CheckSquare, Boxes, Network,
+} from "lucide-react";
+
+/* ----------------------------- Sektor industri ----------------------------- */
+export const SECTORS = [
+  { id: "oilgas", name: "Minyak & Gas", icon: FlaskConical, desc: "Hulu–hilir migas, kilang, LNG, distribusi BBM" },
+  { id: "power", name: "Ketenagalistrikan & EBT", icon: Zap, desc: "Pembangkit konvensional & energi baru terbarukan" },
+  { id: "mining", name: "Pertambangan", icon: Mountain, desc: "Tambang terbuka & bawah tanah, pengolahan mineral" },
+  { id: "manufacturing", name: "Manufaktur", icon: Factory, desc: "Pabrik, lini produksi, perakitan" },
+  { id: "construction", name: "Konstruksi", icon: HardHat, desc: "Proyek sipil, gedung, infrastruktur" },
+  { id: "chemical", name: "Petrokimia & Kimia", icon: Boxes, desc: "Pabrik kimia, petrokimia, pupuk" },
+  { id: "transport", name: "Transportasi & Logistik", icon: Truck, desc: "Pelabuhan, pergudangan, rantai pasok" },
+  { id: "healthcare", name: "Kesehatan", icon: Activity, desc: "Rumah sakit, fasilitas & layanan medis" },
+  { id: "fnb", name: "Pangan & Agribisnis", icon: Wheat, desc: "Pengolahan pangan, perkebunan, F&B" },
+  { id: "property", name: "Properti & Fasilitas", icon: Building2, desc: "Gedung komersial, pengelolaan fasilitas" },
+  { id: "general", name: "Umum / Lainnya", icon: Globe, desc: "Sektor lain atau penilaian lintas-industri" },
+];
+
+/* ------------------------------ Level cakupan ------------------------------ */
+export const LEVELS = [
+  {
+    id: "strategic", name: "Strategic", term: "Jangka Panjang", icon: Target, accent: "#0E7A52",
+    tagline: "Risiko tingkat korporat & arah strategis",
+    desc: "Menilai risiko & peluang strategis organisasi: lingkungan eksternal, posisi bersaing, dan keputusan jangka panjang.",
+  },
+  {
+    id: "operational", name: "Project / Process / Operational", term: "Jangka Menengah", icon: Workflow, accent: "#1A6FB0",
+    tagline: "Risiko proyek, proses, dan operasi",
+    desc: "Menilai bahaya & keandalan pada level proses/operasi: identifikasi bahaya, penyimpangan proses, kelangsungan bisnis, dan analisis keputusan.",
+  },
+  {
+    id: "task", name: "Task", term: "Jangka Pendek", icon: ListChecks, accent: "#B5651D",
+    tagline: "Risiko aktivitas & pekerjaan harian",
+    desc: "Menilai risiko pada level tugas/pekerjaan spesifik sebelum dilaksanakan: langkah kerja, bahaya, dan pengendalian.",
+  },
+];
+
+/* -------------------------------- Instrumen -------------------------------- */
+/* kind: "hazid"/"hazop" -> editor lengkap eksisting; "table"/"matrix"/"swot" -> editor schema-driven */
+export const INSTRUMENTS = [
+  /* ---------------- STRATEGIC ---------------- */
+  {
+    id: "swot", name: "Analisis SWOT", level: "strategic", icon: Target, kind: "swot",
+    short: "Kekuatan, Kelemahan, Peluang, Ancaman",
+    whenToUse: "Memetakan posisi strategis organisasi terhadap faktor internal & eksternal.",
+    quadrants: [
+      { k: "strengths", label: "Strengths / Kekuatan", hint: "Keunggulan internal", color: "#1A7E45" },
+      { k: "weaknesses", label: "Weaknesses / Kelemahan", hint: "Keterbatasan internal", color: "#C0392B" },
+      { k: "opportunities", label: "Opportunities / Peluang", hint: "Faktor eksternal positif", color: "#1A6FB0" },
+      { k: "threats", label: "Threats / Ancaman", hint: "Faktor eksternal negatif", color: "#B5651D" },
+    ],
+  },
+  {
+    id: "pestle", name: "Analisis PESTLE", level: "strategic", icon: Globe, kind: "table",
+    short: "Political, Economic, Social, Technological, Legal, Environmental",
+    whenToUse: "Menelaah faktor makro-lingkungan yang memengaruhi organisasi.",
+    columns: [
+      { k: "factor", label: "Faktor", type: "select", options: ["Political", "Economic", "Social", "Technological", "Legal", "Environmental"], w: 150 },
+      { k: "issue", label: "Isu / Tren", type: "textarea" },
+      { k: "impact", label: "Dampak ke Organisasi", type: "textarea" },
+      { k: "response", label: "Respons Strategis", type: "textarea" },
+    ],
+  },
+  {
+    id: "cynefin", name: "Kerangka Cynefin", level: "strategic", icon: Compass, kind: "table",
+    short: "Klasifikasi domain keputusan (Clear–Complicated–Complex–Chaotic)",
+    whenToUse: "Menentukan pendekatan pengambilan keputusan sesuai sifat masalah.",
+    columns: [
+      { k: "issue", label: "Isu / Keputusan", type: "textarea" },
+      { k: "domain", label: "Domain", type: "select", options: ["Clear", "Complicated", "Complex", "Chaotic", "Confused"], w: 150 },
+      { k: "approach", label: "Pendekatan", type: "textarea" },
+      { k: "action", label: "Tindakan", type: "textarea" },
+    ],
+  },
+  {
+    id: "pha", name: "Preliminary Hazard Analysis (PHA)", level: "strategic", icon: ShieldAlert, kind: "matrix",
+    short: "Identifikasi bahaya awal tingkat konsep/desain",
+    whenToUse: "Tahap awal proyek untuk menapis bahaya utama sebelum kajian rinci.",
+    columns: [
+      { k: "hazard", label: "Bahaya", type: "textarea" },
+      { k: "cause", label: "Penyebab", type: "textarea" },
+      { k: "consequence", label: "Konsekuensi", type: "textarea" },
+      { k: "mitigation", label: "Mitigasi Awal", type: "textarea" },
+    ],
+    risk: true,
+  },
+  {
+    id: "riskregister", name: "Risk Register (ERM)", level: "strategic", icon: Layers, kind: "matrix",
+    short: "Daftar risiko korporat terstruktur",
+    whenToUse: "Mengelola portofolio risiko organisasi secara menyeluruh.",
+    columns: [
+      { k: "risk", label: "Pernyataan Risiko", type: "textarea" },
+      { k: "category", label: "Kategori", type: "text", w: 150 },
+      { k: "cause", label: "Penyebab", type: "textarea" },
+      { k: "impact", label: "Dampak", type: "textarea" },
+      { k: "treatment", label: "Perlakuan Risiko", type: "textarea" },
+      { k: "owner", label: "Pemilik Risiko", type: "text", w: 140 },
+    ],
+    risk: true,
+  },
+
+  /* ---------------- OPERATIONAL ---------------- */
+  {
+    id: "hazid", name: "HAZID", level: "operational", icon: ListChecks, kind: "hazid",
+    short: "Hazard Identification — identifikasi bahaya tingkat tinggi",
+    whenToUse: "Identifikasi bahaya menyeluruh termasuk bahaya eksternal, tahap awal/konsep.",
+  },
+  {
+    id: "hazop", name: "HAZOP", level: "operational", icon: GitBranch, kind: "hazop",
+    short: "Hazard & Operability — penyimpangan parameter proses",
+    whenToUse: "Kajian rinci penyimpangan parameter proses per node P&ID (desain matang/operasi).",
+  },
+  {
+    id: "whatif", name: "What-If Analysis", level: "operational", icon: HelpCircle, kind: "matrix",
+    short: "Brainstorming pertanyaan 'bagaimana jika…'",
+    whenToUse: "Identifikasi risiko fleksibel berbasis pertanyaan untuk proses/aktivitas.",
+    columns: [
+      { k: "question", label: "Pertanyaan 'Bagaimana Jika'", type: "textarea" },
+      { k: "consequence", label: "Konsekuensi", type: "textarea" },
+      { k: "safeguard", label: "Pengaman Eksisting", type: "textarea" },
+      { k: "recommendation", label: "Rekomendasi", type: "textarea" },
+    ],
+    risk: true,
+  },
+  {
+    id: "swift", name: "SWIFT", level: "operational", icon: Workflow, kind: "matrix",
+    short: "Structured What-If Technique",
+    whenToUse: "What-If terstruktur memakai daftar kata-kunci panduan secara sistematis.",
+    columns: [
+      { k: "prompt", label: "Kata Kunci / Prompt", type: "text", w: 170 },
+      { k: "deviation", label: "Penyimpangan / Skenario", type: "textarea" },
+      { k: "consequence", label: "Konsekuensi", type: "textarea" },
+      { k: "safeguard", label: "Pengaman", type: "textarea" },
+      { k: "recommendation", label: "Rekomendasi", type: "textarea" },
+    ],
+    risk: true,
+  },
+  {
+    id: "delphi", name: "Metode Delphi", level: "operational", icon: Users, kind: "table",
+    short: "Konsensus pakar secara iteratif",
+    whenToUse: "Mengumpulkan & mengonvergensikan pendapat pakar pada isu tidak pasti.",
+    columns: [
+      { k: "topic", label: "Isu / Pertanyaan", type: "textarea" },
+      { k: "round1", label: "Ronde 1", type: "textarea" },
+      { k: "round2", label: "Ronde 2", type: "textarea" },
+      { k: "consensus", label: "Konsensus", type: "textarea" },
+      { k: "note", label: "Catatan", type: "textarea" },
+    ],
+  },
+  {
+    id: "cba", name: "Cost-Benefit Analysis", level: "operational", icon: Scale, kind: "table",
+    short: "Analisis biaya–manfaat opsi pengendalian/keputusan",
+    whenToUse: "Membandingkan biaya & manfaat antar opsi mitigasi atau keputusan.",
+    columns: [
+      { k: "option", label: "Opsi", type: "textarea" },
+      { k: "cost", label: "Biaya (estimasi)", type: "textarea", w: 180 },
+      { k: "benefit", label: "Manfaat", type: "textarea" },
+      { k: "ratio", label: "Rasio / Catatan", type: "textarea", w: 160 },
+      { k: "decision", label: "Rekomendasi", type: "textarea", w: 150 },
+    ],
+  },
+  {
+    id: "scenario", name: "Scenario Analysis", level: "operational", icon: TrendingUp, kind: "table",
+    short: "Analisis skenario masa depan & respons",
+    whenToUse: "Menelaah skenario plausibel (best/worst/likely) dan respons strategisnya.",
+    columns: [
+      { k: "scenario", label: "Skenario", type: "textarea" },
+      { k: "trigger", label: "Pemicu / Asumsi", type: "textarea" },
+      { k: "impact", label: "Dampak", type: "textarea" },
+      { k: "likelihood", label: "Kemungkinan", type: "select", options: ["Rendah", "Sedang", "Tinggi"], w: 130 },
+      { k: "response", label: "Respons", type: "textarea" },
+    ],
+  },
+  {
+    id: "bia", name: "Business Impact Analysis (BIA)", level: "operational", icon: Network, kind: "table",
+    short: "Analisis dampak gangguan terhadap fungsi bisnis",
+    whenToUse: "Menentukan fungsi kritis, RTO/RPO, dan prioritas pemulihan (BCM).",
+    columns: [
+      { k: "function", label: "Fungsi Bisnis / Proses", type: "textarea" },
+      { k: "impact", label: "Dampak Bila Terganggu", type: "textarea" },
+      { k: "rto", label: "RTO", type: "text", w: 110 },
+      { k: "rpo", label: "RPO", type: "text", w: 110 },
+      { k: "resources", label: "Sumber Daya Kritis", type: "textarea" },
+      { k: "priority", label: "Prioritas", type: "select", options: ["Tinggi", "Sedang", "Rendah"], w: 120 },
+    ],
+  },
+  {
+    id: "fmea", name: "FMEA", level: "operational", icon: Boxes, kind: "fmea",
+    short: "Failure Mode & Effects Analysis (RPN = S×O×D)",
+    whenToUse: "Menilai mode kegagalan komponen/proses dan prioritas via Severity×Occurrence×Detection.",
+    columns: [
+      { k: "item", label: "Item / Fungsi", type: "textarea" },
+      { k: "mode", label: "Mode Kegagalan", type: "textarea" },
+      { k: "effect", label: "Efek", type: "textarea" },
+      { k: "cause", label: "Penyebab", type: "textarea" },
+      { k: "control", label: "Kontrol Saat Ini", type: "textarea" },
+      { k: "action", label: "Tindakan", type: "textarea" },
+    ],
+  },
+
+  /* ---------------- TASK ---------------- */
+  {
+    id: "jsa", name: "Job Safety Analysis (JSA)", level: "task", icon: ClipboardList, kind: "matrix",
+    short: "Analisis keselamatan pekerjaan per langkah",
+    whenToUse: "Menguraikan langkah kerja, bahaya tiap langkah, dan pengendaliannya.",
+    columns: [
+      { k: "step", label: "Langkah Pekerjaan", type: "textarea" },
+      { k: "hazard", label: "Potensi Bahaya", type: "textarea" },
+      { k: "control", label: "Pengendalian", type: "textarea" },
+      { k: "pic", label: "Penanggung Jawab", type: "text", w: 150 },
+    ],
+    risk: true,
+  },
+  {
+    id: "checklist", name: "Checklist K3", level: "task", icon: CheckSquare, kind: "table",
+    short: "Daftar periksa kepatuhan/inspeksi",
+    whenToUse: "Verifikasi pemenuhan item keselamatan secara cepat & konsisten.",
+    columns: [
+      { k: "item", label: "Item Pemeriksaan", type: "textarea" },
+      { k: "status", label: "Status", type: "select", options: ["Sesuai", "Tidak Sesuai", "N/A"], w: 140 },
+      { k: "finding", label: "Temuan / Catatan", type: "textarea" },
+      { k: "action", label: "Tindakan Perbaikan", type: "textarea" },
+    ],
+  },
+  {
+    id: "take5", name: "Take-5 / LMRA", level: "task", icon: ShieldAlert, kind: "matrix",
+    short: "Last-Minute Risk Assessment sebelum bekerja",
+    whenToUse: "Penilaian risiko singkat oleh pekerja tepat sebelum memulai tugas.",
+    columns: [
+      { k: "hazard", label: "Bahaya yang Teramati", type: "textarea" },
+      { k: "risk", label: "Risiko", type: "textarea" },
+      { k: "control", label: "Tindakan Pengendalian", type: "textarea" },
+    ],
+    risk: true,
+  },
+];
+
+/* ------------------------------- Helper akses ------------------------------ */
+export function instrumentsByLevel(levelId) {
+  return INSTRUMENTS.filter(function (x) { return x.level === levelId; });
+}
+export function getInstrument(id) {
+  return INSTRUMENTS.find(function (x) { return x.id === id; }) || null;
+}
+export function getSector(id) {
+  return SECTORS.find(function (x) { return x.id === id; }) || null;
+}
+export function getLevel(id) {
+  return LEVELS.find(function (x) { return x.id === id; }) || null;
+}

@@ -1,0 +1,40 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body, #root { height: 100%; }
+body {
+  margin: 0;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  background: #EEF4F0;
+  color: #16261E;
+}
+
+/* Smooth, less-flat feel */
+button { transition: filter .15s ease, transform .05s ease, background .15s ease; }
+input, select, textarea { transition: border-color .15s ease, box-shadow .15s ease; }
+input:focus, select:focus, textarea:focus {
+  border-color: #15976A !important;
+  box-shadow: 0 0 0 3px rgba(23,160,107,0.14);
+}
+
+/* Refined emerald scrollbar */
+::-webkit-scrollbar { width: 11px; height: 11px; }
+::-webkit-scrollbar-thumb { background: #C2D6CB; border-radius: 8px; border: 3px solid transparent; background-clip: content-box; }
+::-webkit-scrollbar-thumb:hover { background: #9FBEAE; background-clip: content-box; }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* Print rules for the in-app report (Tab "Laporan Akhir") */
+@media print {
+  /* Critical: keep all background colours, gradients & badge fills when printing */
+  * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+  .no-print { display: none !important; }
+  body { background: #fff !important; }
+  .report-area { box-shadow: none !important; border: none !important; border-radius: 0 !important; margin: 0 !important; }
+  /* Sensible pagination: repeat table headers, never split a row or image */
+  thead { display: table-header-group; }
+  tr, img { break-inside: avoid; }
+  @page { margin: 12mm; }
+}
